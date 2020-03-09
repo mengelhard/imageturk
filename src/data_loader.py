@@ -2,9 +2,11 @@ import numpy as np
 import pandas as pd
 import ast
 import os
+from PIL import Image, ExifTags#, ImageOps
 
 import constants as const
 
+### NOTE: normalize outcomes ###
 
 def main():
 
@@ -21,10 +23,44 @@ def main():
 	print('Test data:')
 	print(dl.data['test'][const.OUTCOMES])
 
-	print('Testing batches:')
-	for batch_x, batch_y in dl.get_batch('train', 50):
-		print(batch_x)
-		print(batch_y)
+	print('Viewing training batches:')
+
+	for i, (batch_x, batch_y) in enumerate(dl.get_batch('train', 50, imgfmt='name')):
+		
+		print(
+			'Batch %i: imagefiles shape' % i,
+			np.shape(batch_x),
+			'and outcomes shape',
+			np.shape(batch_y))
+
+	#print('Final batch:')
+	#print(batch_x)
+	#print(batch_y)
+
+	print('Displaying random sample:')
+
+	import matplotlib.pyplot as plt
+
+	x, y = dl.sample_data(normalize=False)
+
+	x = np.squeeze(x)
+	y = np.squeeze(y)
+
+	print('Outcomes for displayed images:')
+	print(list(zip(const.OUTCOMES, y)))
+
+	fig, ax = plt.subplots(
+		ncols=5,
+		nrows=int(np.ceil(len(x) / 5)),
+		figsize=(15, 6))
+
+	for i, img in enumerate(x):
+		a = ax[i // 5, i % 5]
+		a.imshow(x[i, :, :, :].astype(int))
+		a.axis('off')
+
+	plt.tight_layout()
+	plt.show()
 
 
 class DataLoader:
@@ -56,9 +92,10 @@ class DataLoader:
 		self.data['test'] = self.data['all'].iloc[tidx:, :]
 
 
-	def get_batch(self, part, batch_size):
+	def get_batch(self, part, batch_size, imgfmt='array'):
 
 		assert part in ['all', 'train', 'val', 'test']
+		assert imgfmt in ['name', 'array']
 		
 		l = len(self.data[part])
 
@@ -68,10 +105,40 @@ class DataLoader:
 
 			data = self.data[part].iloc[ndx:endx, :]
 
-			filenames = data.drop(const.OUTCOMES, axis=1).values
-			outcomes = data[const.OUTCOMES].values
+			fns, y = self._split_images_and_outcomes(data)
 
-			yield filenames, outcomes
+			if imgfmt == 'name':
+
+				yield fns, y
+
+			elif imgfmt == 'array':
+
+				yield images_from_files(fns, (224, 224)), y
+
+
+	def sample_data(self, n=1, imgfmt='array', normalize=True):
+
+		assert imgfmt in ['name', 'array']
+
+		s = self.data['all'].sample(n=n)
+
+		x, y = self._split_images_and_outcomes(s)
+
+		if imgfmt == 'name':
+
+			return x, y
+
+		elif imgfmt == 'array':
+
+			return images_from_files(x, (224, 224), normalize=normalize), y
+
+
+	def _split_images_and_outcomes(self, df):
+
+		filenames = df.drop(const.OUTCOMES, axis=1).values
+		outcomes = df[const.OUTCOMES].values
+
+		return filenames, outcomes
 
 
 	def _get_datafile(self, group):
@@ -137,7 +204,7 @@ class DataLoader:
 			index=df.index)
 
 
-	def _get_image_filenames(self, df, group):
+	def _get_image_filenames(self, df, group, verify=True):
 
 		cols = const.IMAGES[group]
 
@@ -146,10 +213,31 @@ class DataLoader:
 		elif group == 'non':
 			basedir = os.path.join(self.datadir, 'imageturk_nonsmoker')
 
-		return pd.DataFrame(
-			{c: basedir + '/' + c + '/' + df[c + '_FILE_ID'] + '~' + df[c + '_FILE_NAME']
-			 for c in cols},
-			index=df.index)
+		fn_dict = {c: imageturk_fn_from_qcol(
+			df, basedir, c, verify=verify) for c in cols}
+
+		return pd.DataFrame(fn_dict, index=df.index)
+
+
+def imageturk_fn_from_qcol(df, basedir, qcol, verify=True):
+	filename = replace_all(
+		df[qcol + '_FILE_NAME'],
+		['-', ' ', '(', ')', '[', ']', '~'],
+		'_')
+	basename = df.index + '~' + filename
+	fns = basedir + '/' + qcol + '_FILE_ID/' + basename
+	if verify:
+		for fn in fns.values:
+			if not os.path.isfile(fn):
+				print('%s not found' % fn)
+	return fns
+
+
+def replace_all(series, pattern_list, replacement):
+	s = series.copy()
+	for pattern in pattern_list:
+		s = s.str.replace(pattern, replacement)
+	return s
 
 
 def check_directories(dirlist):
@@ -186,6 +274,71 @@ def listdir_by_ext(directory, extension=None):
 def get_filecols(df):
 
 	return [x for x in df.columns.values if (x[-7:] == 'FILE_ID')]
+
+
+def image_from_file(fn, shape=(224, 224), normalize=True):
+	"""Get raw image from filename"""
+	if not os.path.isfile(fn):
+		
+		return np.zeros(shape + (3,))
+	
+	with Image.open(fn) as image:
+
+		try:
+
+			#image = ImageOps.exif_transpose(image)
+			image = correct_orientation(image)
+
+		except:
+
+			pass
+		
+		image = image.resize(shape, resample=Image.BILINEAR)
+		
+		imagearr = np.array(image, dtype='f')
+	
+	if normalize:
+		
+		return imagearr / 127.5 - 1
+	
+	else:
+		
+		return imagearr
+
+
+def images_from_files(fns, shape, normalize=True):
+	"""Get stack of images from filenames"""
+	if len(np.shape(fns)) == 1:
+		return np.stack(
+			[image_from_file(fn, shape, normalize=normalize) for fn in fns])
+	else:
+		return np.stack(
+			[images_from_files(fn, shape, normalize=normalize) for fn in fns])
+
+
+for ORIENTATION_TAG in ExifTags.TAGS.keys():
+	if ExifTags.TAGS[ORIENTATION_TAG]=='Orientation':
+		break
+
+
+def correct_orientation(image):
+
+	try:
+		
+		exif=dict(image._getexif().items())
+
+		if exif[ORIENTATION_TAG] == 3:
+			image=image.rotate(180, expand=True)
+		elif exif[ORIENTATION_TAG] == 6:
+			image=image.rotate(270, expand=True)
+		elif exif[ORIENTATION_TAG] == 8:
+			image=image.rotate(90, expand=True)
+
+	except (AttributeError, KeyError, IndexError):
+		# cases: image don't have getexif
+		pass
+
+	return image
 
 
 if __name__ == '__main__':
