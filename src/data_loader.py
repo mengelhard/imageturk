@@ -6,6 +6,8 @@ from PIL import Image, ExifTags#, ImageOps
 
 import constants as const
 
+VERIFY_BATCHES = True
+
 
 def main():
 
@@ -22,19 +24,37 @@ def main():
 	print('Test data:')
 	print(dl.data['test'][const.OUTCOMES])
 
-	print('Viewing training batches:')
+	if VERIFY_BATCHES:
 
-	for i, (batch_x, batch_y) in enumerate(dl.get_batch('train', 50, imgfmt='name')):
-		
-		print(
-			'Batch %i: imagefiles shape' % i,
-			np.shape(batch_x),
-			'and outcomes shape',
-			np.shape(batch_y))
+		print('Verifying training batches:')
 
-	#print('Final batch:')
-	#print(batch_x)
-	#print(batch_y)
+		for i, (batch_x, batch_y) in enumerate(dl.get_batch('train', 10)):
+			
+			print(
+				'Batch %i: imagefiles shape' % i,
+				np.shape(batch_x),
+				'and outcomes shape',
+				np.shape(batch_y))
+
+		print('Verifying validation batches:')
+
+		for i, (batch_x, batch_y) in enumerate(dl.get_batch('val', 10)):
+			
+			print(
+				'Batch %i: imagefiles shape' % i,
+				np.shape(batch_x),
+				'and outcomes shape',
+				np.shape(batch_y))
+
+		print('Verifying test batches:')
+
+		for i, (batch_x, batch_y) in enumerate(dl.get_batch('test', 10)):
+			
+			print(
+				'Batch %i: imagefiles shape' % i,
+				np.shape(batch_x),
+				'and outcomes shape',
+				np.shape(batch_y))
 
 	print('Displaying random sample:')
 
@@ -246,6 +266,7 @@ def imageturk_fn_from_qcol(df, basedir, qcol, verify=True):
 		df[qcol + '_FILE_NAME'],
 		['-', ' ', '(', ')', '[', ']', '~'],
 		'_')
+	filename = replace_all(filename, ['.heic', '.HEIC'], '.jpg')
 	basename = df.index + '~' + filename
 	fns = basedir + '/' + qcol + '_FILE_ID/' + basename
 	if verify:
@@ -314,10 +335,14 @@ def image_from_file(fn, shape=(224, 224), normalize=True):
 		except:
 
 			pass
-		
+
 		image = image.resize(shape, resample=Image.BILINEAR)
 		
 		imagearr = np.array(image, dtype='f')
+
+		if np.shape(imagearr)[-1] == 4:
+
+			imagearr = imagearr[:, :, :3]
 	
 	if normalize:
 		
