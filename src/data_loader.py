@@ -6,7 +6,6 @@ from PIL import Image, ExifTags#, ImageOps
 
 import constants as const
 
-### NOTE: normalize outcomes ###
 
 def main():
 
@@ -80,6 +79,9 @@ class DataLoader:
 		data_non = self._get_image_filenames(df_non, 'non').join(
 			self._get_outcomes(df_non, 'non'))
 
+		self.n_out = len(const.OUTCOMES)
+		self.n_images = len(const.IMAGES['non'])
+
 		self.data = dict()
 
 		self.data['all'] = pd.concat([data_smok, data_non], axis=0).sample(
@@ -88,11 +90,19 @@ class DataLoader:
 		vidx, tidx = (int(x * len(self.data['all'])) for x in data_partition)
 
 		self.data['train'] = self.data['all'].iloc[:vidx, :]
+		self.n_train = len(self.data['train'])
+
 		self.data['val'] = self.data['all'].iloc[vidx:tidx, :]
+		self.n_val = len(self.data['val'])
+
 		self.data['test'] = self.data['all'].iloc[tidx:, :]
+		self.n_test = len(self.data['test'])
+
+		self.train_mean = self.data['train'][const.OUTCOMES].mean(axis=0)
+		self.train_std = self.data['train'][const.OUTCOMES].std(axis=0)
 
 
-	def get_batch(self, part, batch_size, imgfmt='array'):
+	def get_batch(self, part, batch_size, imgfmt='array', normalize=True):
 
 		assert part in ['all', 'train', 'val', 'test']
 		assert imgfmt in ['name', 'array']
@@ -109,18 +119,30 @@ class DataLoader:
 
 			if imgfmt == 'name':
 
-				yield fns, y
+				yield fns, self._normalize_outcomes(y)
 
 			elif imgfmt == 'array':
 
-				yield images_from_files(fns, (224, 224)), y
+				yield images_from_files(fns, (224, 224)), self._normalize_outcomes(y)
 
 
-	def sample_data(self, n=1, imgfmt='array', normalize=True):
+	def _normalize_outcomes(self, outcomes):
 
+		return (outcomes - self.train_mean[np.newaxis, :]) / self.train_std[np.newaxis, :]
+
+
+	def sample_data(self, part='all', n=1, imgfmt='array', normalize=True):
+
+		assert part in ['all', 'train', 'val', 'test']
 		assert imgfmt in ['name', 'array']
 
-		s = self.data['all'].sample(n=n)
+		if n == -1:
+
+			s = self.data[part].sample(frac=1)
+
+		else:
+
+			s = self.data[part].sample(n=n)
 
 		x, y = self._split_images_and_outcomes(s)
 
