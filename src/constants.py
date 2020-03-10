@@ -4,7 +4,7 @@ import pandas as pd
 '''contains constants and scoring for imageturk data'''
 
 
-DATA_DIRS = ['/Users/mme/data']
+DATA_DIRS = ['/Users/mme/data', '/scratch/mme4']
 
 DATA_SUBDIR = {
 	'smok': 'imageturk_smoker',

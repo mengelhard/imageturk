@@ -1,9 +1,17 @@
 import numpy as np
 import tensorflow as tf
 import sys
+import os
 import datetime
 
-sys.path.append('/Users/mme/projects/models/research/slim')
+MODELS_PATHS = [
+	'/Users/mme/projects/models/research/slim',
+	'/scratch/mme4/models/research/slim'
+]
+
+for p in MODELS_PATHS:
+	if os.path.exists(p):
+		sys.path.append(p)
 
 from nets.mobilenet import mobilenet_v2
 
@@ -59,7 +67,8 @@ class BaselineModel:
 		self, dataloader,
 		image_feature_size=50,
 		hidden_layer_sizes=[],
-		learning_rate=1e-3):
+		learning_rate=1e-3,
+		train_mobilenet=False):
 
 		self.dataloader = dataloader
 
@@ -70,6 +79,8 @@ class BaselineModel:
 		self.hidden_layer_sizes = hidden_layer_sizes
 
 		self.learning_rate = learning_rate
+
+		self.train_mobilenet = train_mobilenet
 
 		self._build_placeholders()
 		self._build_mobilenet()
@@ -170,8 +181,13 @@ class BaselineModel:
 
 		x_flat = tf.reshape(self.x, (-1, 224, 224, 3))
 
+		if self.train_mobilenet:
+			is_training = self.is_training
+		else:
+			is_training = False
+
 		with tf.contrib.slim.arg_scope(
-			mobilenet_v2.training_scope(is_training=self.is_training)):
+			mobilenet_v2.training_scope(is_training=is_training)):
 			
 			logits, endpoints = mobilenet_v2.mobilenet(x_flat)
 
@@ -217,8 +233,23 @@ class BaselineModel:
 			self.y,
 			self.y_pred)
 
-		self.train_step = tf.train.AdamOptimizer(
-			self.learning_rate).minimize(self.loss)
+		if self.train_mobilenet:
+
+			self.train_step = tf.train.AdamOptimizer(
+				self.learning_rate).minimize(self.loss)
+
+		else:
+
+			myvars = tf.get_collection(
+				tf.GraphKeys.GLOBAL_VARIABLES,
+				scope='image_features')
+
+			myvars += tf.get_collection(
+				tf.GraphKeys.GLOBAL_VARIABLES,
+				scope='outcomes')
+
+			self.train_step = tf.train.AdamOptimizer(
+				self.learning_rate).minimize(self.loss, var_list=myvars)
 
 
 def mlp(x, hidden_layer_sizes,
