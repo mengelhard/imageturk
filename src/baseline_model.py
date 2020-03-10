@@ -15,7 +15,15 @@ for p in MODELS_PATHS:
 
 from nets.mobilenet import mobilenet_v2
 
-CHECKPOINT_FILE = '../mobilenet_checkpoint/mobilenet_v2_1.0_224.ckpt'
+CHECKPOINT_FILE_PATHS = [
+	'/Users/mme/projects/imageturk/mobilenet_checkpoint/mobilenet_v2_1.0_224.ckpt',
+	'/scratch/mme4/mobilenet_checkpoint/mobilenet_v2_1.0_224.ckpt'
+]
+
+for f in CHECKPOINT_FILE_PATHS:
+	if os.path.exists(f):
+		CHECKPOINT_FILE = f
+
 GLOBAL_POOL_N_FEATURES = 1280
 
 import constants as const
