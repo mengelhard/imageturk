@@ -31,42 +31,54 @@ import constants as const
 
 def main():
 
-	utc = datetime.datetime.utcnow().strftime('%s')
-
 	from data_loader import DataLoader
+	from results_writer import ResultsWriter
 
-	dl = DataLoader()
+	hyperparam_options = {
+		'image_feature_size': 10,#np.arange(10, 300),
+		'n_hidden_layers': [0],#[0, 1, 1, 1],
+		'hidden_layer_sizes': np.arange(10, 300),
+		'learning_rate': np.exp(np.linspace(-3, -10, 10)),
+		'activation_fn': [tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
+		'dropout_pct': [0, .25, .5],
+		'train_mobilenet': [False],#[True, False],
+		'max_epochs_no_improve': 1,#np.arange(5),
+		'batch_size': [10, 20, 30, 40, 50],
+		'val_fold': np.arange(4)
+	}
 
-	mdl = BaselineModel(dl)
+	resultcols = ['status']
+	resultcols += [('mse_%s' % o) for o in const.OUTCOMES]
+	resultcols += list(hyperparam_options.keys())
 
-	with tf.Session() as s:
+	rw = ResultsWriter(resultcols)
 
-		train_stats, val_stats = mdl.train(s)
+	for i in range(30):
 
-		y_pred, y, mse_all = mdl.predict(sess, 'val')
+		tf.reset_default_graph()
 
-	mse = np.mean((y - y_pred) ** 2, axis=0)
+		hyperparams = select_hyperparams(hyperparam_options)
 
-	import matplotlib.pyplot as plt
+		dl = DataLoader(**hyperparams)
 
-	fig, ax = plt.subplots(nrows=1 + dl.n_out, ncols=1, figsize=(5 + 5 * dl.n_out, 5))
+		mdl = BaselineModel(dl, **hyperparams)
 
-	ax[0].plot(*list(zip(*train_stats)), label='train')
-	ax[0].plot(*list(zip(*val_stats)), label='val')
-	ax[0].set_title('Training Plot')
-	ax[0].set_xlabel('Iteration')
-	ax[0].set_ylabel('Mean Square Error')
-	ax[0].legend()
+		try:
 
-	for i in range(dl.n_out):
+			with tf.compat.v1.Session() as s:
 
-		ax[i + 1].scatter(y[:, i], y_pred[:, i])
-		ax[i + 1].set_title(const.OUTCOMES[i] + '(MSE = %.2f)' % mse[i])
-		ax[i + 1].set_xlabel('y_true')
-		ax[i + 1].set_ylabel('y_pred')
+				train_stats, val_stats = mdl.train(s, **hyperparams)
+				y_pred, y, mse_all = mdl.predict(s, 'val')
 
-	plt.tight_layout()
-	plt.savefig('results_' + utc + '.png')
+			mse = np.mean((y - y_pred) ** 2, axis=0)
+			mse_dict = {('mse_%s' % o): v for o, v in zip(const.OUTCOMES, mse)}
+
+			rw.write(i, {'status': 'complete', **mse_dict, **hyperparams})
+			rw.plot(i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse)
+
+		except:
+
+			rw.write(i, {'status': 'failed', **hyperparams})
 
 
 class BaselineModel:
@@ -74,9 +86,13 @@ class BaselineModel:
 	def __init__(
 		self, dataloader,
 		image_feature_size=50,
-		hidden_layer_sizes=[],
+		n_hidden_layers=1,
+		hidden_layer_sizes=50,
 		learning_rate=1e-3,
-		train_mobilenet=False):
+		activation_fn=tf.nn.relu,
+		dropout_pct=.5,
+		train_mobilenet=False,
+		**kwargs):
 
 		self.dataloader = dataloader
 
@@ -84,9 +100,11 @@ class BaselineModel:
 		self.n_images = dataloader.n_images
 
 		self.image_feature_size = image_feature_size
-		self.hidden_layer_sizes = hidden_layer_sizes
+		self.hidden_layer_sizes = [hidden_layer_sizes] * n_hidden_layers
 
 		self.learning_rate = learning_rate
+		self.activation_fn = activation_fn
+		self.dropout_pct = dropout_pct
 
 		self.train_mobilenet = train_mobilenet
 
@@ -100,20 +118,30 @@ class BaselineModel:
 		self, sess,
 		max_epochs=30, max_epochs_no_improve=2,
 		batch_size=20, batch_eval_freq=1,
-		verbose=True):
+		verbose=True,
+		**kwargs):
 
-		sess.run(tf.global_variables_initializer())
+		sess.run(tf.compat.v1.global_variables_initializer())
 		self.mobilenet_saver.restore(sess, CHECKPOINT_FILE)
-
-		train_stats = []
-		val_stats = []
-		best_val_nloglik = np.inf
-		n_epochs_no_improve = 0
 
 		batches_per_epoch = int(np.ceil(
 			self.dataloader.n_train / batch_size))
 
 		xval, yval = self.dataloader.sample_data(part='val', n=-1)
+
+		train_stats = []
+		val_stats = []
+
+		val_stats.append((0, sess.run(
+			self.loss,
+			feed_dict={self.x: xval, self.y: yval, self.is_training: False})))
+
+		if verbose:
+
+			print('Initial val loss: %.2f' % val_stats[-1][1])
+
+		best_val_loss = val_stats[0][1]
+		n_epochs_no_improve = 0
 
 		for epoch_idx in range(max_epochs):
 
@@ -145,8 +173,8 @@ class BaselineModel:
 					np.mean(list(zip(*train_stats[-batches_per_epoch:]))[1])
 				))
 
-			if val_stats[-1][1] < best_val_nloglik:
-				best_val_nloglik = val_stats[-1][1]
+			if val_stats[-1][1] < best_val_loss:
+				best_val_loss = val_stats[-1][1]
 				n_epochs_no_improve = 0
 			else:
 				n_epochs_no_improve += 1
@@ -200,7 +228,8 @@ class BaselineModel:
 			logits, endpoints = mobilenet_v2.mobilenet(x_flat)
 
 		ema = tf.train.ExponentialMovingAverage(0.999)
-		self.mobilenet_saver = tf.train.Saver(ema.variables_to_restore())
+		self.mobilenet_saver = tf.compat.v1.train.Saver(
+			ema.variables_to_restore())
 
 		features_flat = tf.squeeze(endpoints['global_pool'], [1, 2])
 
@@ -211,22 +240,26 @@ class BaselineModel:
 
 	def _build_model(self):
 
-		with tf.variable_scope('image_features'):
+		with tf.compat.v1.variable_scope('image_features'):
 
 			feat = mlp(
 				self.image_features,
 				[self.image_feature_size],
+				dropout_pct=self.dropout_pct,
+				activation_fn=self.activation_fn,
 				training=self.is_training)
 
 		feature_vec = tf.concat(
 			[tf.reduce_mean(feat, axis=1), tf.reduce_max(feat, axis=1)],
 			axis=1)
 
-		with tf.variable_scope('outcomes'):
+		with tf.compat.v1.variable_scope('outcomes'):
 
 			hidden_layer = mlp(
 				feature_vec,
 				self.hidden_layer_sizes,
+				dropout_pct=self.dropout_pct,
+				activation_fn=self.activation_fn,
 				training=self.is_training)
 
 			self.y_pred = tf.layers.dense(
@@ -237,38 +270,38 @@ class BaselineModel:
 
 	def _build_train_step(self):
 
-		self.loss = tf.losses.mean_squared_error(
+		self.loss = tf.compat.v1.losses.mean_squared_error(
 			self.y,
 			self.y_pred)
 
 		if self.train_mobilenet:
 
-			self.train_step = tf.train.AdamOptimizer(
+			self.train_step = tf.compat.v1.train.AdamOptimizer(
 				self.learning_rate).minimize(self.loss)
 
 		else:
 
-			myvars = tf.get_collection(
-				tf.GraphKeys.GLOBAL_VARIABLES,
+			myvars = tf.compat.v1.get_collection(
+				tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
 				scope='image_features')
 
-			myvars += tf.get_collection(
-				tf.GraphKeys.GLOBAL_VARIABLES,
+			myvars += tf.compat.v1.get_collection(
+				tf.compat.v1.GraphKeys.GLOBAL_VARIABLES,
 				scope='outcomes')
 
-			self.train_step = tf.train.AdamOptimizer(
+			self.train_step = tf.compat.v1.train.AdamOptimizer(
 				self.learning_rate).minimize(self.loss, var_list=myvars)
 
 
 def mlp(x, hidden_layer_sizes,
-		dropout_pct = 0.,
+		dropout_pct=0.,
 		activation_fn=tf.nn.relu,
 		training=True,
 		reuse=False):
 
 	hidden_layer = x
 
-	with tf.variable_scope('mlp', reuse=reuse):
+	with tf.compat.v1.variable_scope('mlp', reuse=reuse):
 
 		for i, layer_size in enumerate(hidden_layer_sizes):
 
@@ -285,6 +318,11 @@ def mlp(x, hidden_layer_sizes,
 					name='dropout_%i' % i)
 
 	return hidden_layer
+
+
+def select_hyperparams(hpdict):
+
+	return {k: np.random.choice(v) for k, v in hpdict.items()}
 
 
 if __name__ == '__main__':

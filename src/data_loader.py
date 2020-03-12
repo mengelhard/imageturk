@@ -6,7 +6,7 @@ from PIL import Image, ExifTags#, ImageOps
 
 import constants as const
 
-VERIFY_BATCHES = True
+VERIFY_BATCHES = False
 
 
 def main():
@@ -84,7 +84,7 @@ def main():
 
 class DataLoader:
 
-	def __init__(self, data_partition=[.6, .8]):
+	def __init__(self, n_folds=5, val_fold=3, test_fold=4, **kwargs):
 
 		self.datadir = os.path.join(
 			check_directories(const.DATA_DIRS),
@@ -107,15 +107,19 @@ class DataLoader:
 		self.data['all'] = pd.concat([data_smok, data_non], axis=0).sample(
 			frac=1, random_state=0) # shuffle rows
 
-		vidx, tidx = (int(x * len(self.data['all'])) for x in data_partition)
+		fold_idx = get_fold_indices(n_folds, len(self.data['all']))
 
-		self.data['train'] = self.data['all'].iloc[:vidx, :]
+		val_idx = fold_idx[val_fold]
+		test_idx = fold_idx[test_fold]
+		train_idx = ~val_idx & ~test_idx
+
+		self.data['train'] = self.data['all'][train_idx]
 		self.n_train = len(self.data['train'])
 
-		self.data['val'] = self.data['all'].iloc[vidx:tidx, :]
+		self.data['val'] = self.data['all'][val_idx]
 		self.n_val = len(self.data['val'])
 
-		self.data['test'] = self.data['all'].iloc[tidx:, :]
+		self.data['test'] = self.data['all'][test_idx]
 		self.n_test = len(self.data['test'])
 
 		self.train_mean = self.data['train'][const.OUTCOMES].mean(axis=0)
@@ -165,6 +169,10 @@ class DataLoader:
 			s = self.data[part].sample(n=n)
 
 		x, y = self._split_images_and_outcomes(s)
+
+		if normalize:
+
+			y = self._normalize_outcomes(y)
 
 		if imgfmt == 'name':
 
@@ -234,7 +242,6 @@ class DataLoader:
 
 		#print('The following columns have null values:')
 		#print(fdf.columns[fdf.isnull().any()].values)
-
 		#print(fdf.isna().sum().reset_index().values)
 
 		return fdf
@@ -319,11 +326,37 @@ def get_filecols(df):
 	return [x for x in df.columns.values if (x[-7:] == 'FILE_ID')]
 
 
+def image_from_file_or_npy(fn, shape=(224, 224), normalize=True):
+
+	fn_npy = os.path.splitext(fn)[0] + '.npy'
+
+	if os.path.isfile(fn_npy):
+
+		imagearr = np.load(fn_npy)
+
+		if not normalize:
+			imagearr = (imagearr + 1) * 127.5
+
+		return imagearr
+
+	elif os.path.isfile(fn):
+
+		imagearr = image_from_file(fn, shape=shape, normalize=True)
+		np.save(fn_npy, imagearr)
+
+		if not normalize:
+			imagearr = (imagearr + 1) * 127.5
+
+		return imagearr
+
+	else:
+
+		print(fn, 'not found; returning array of zeros')
+		return np.zeros(shape + (3, ))
+
+
 def image_from_file(fn, shape=(224, 224), normalize=True):
 	"""Get raw image from filename"""
-	if not os.path.isfile(fn):
-		
-		return np.zeros(shape + (3,))
 	
 	with Image.open(fn) as image:
 
@@ -353,14 +386,18 @@ def image_from_file(fn, shape=(224, 224), normalize=True):
 		return imagearr
 
 
-def images_from_files(fns, shape, normalize=True):
+def images_from_files(fns, shape, normalize=True, use_npy=True):
 	"""Get stack of images from filenames"""
 	if len(np.shape(fns)) == 1:
-		return np.stack(
-			[image_from_file(fn, shape, normalize=normalize) for fn in fns])
+		if use_npy:
+			return np.stack([image_from_file_or_npy(
+				fn, shape, normalize=normalize) for fn in fns])
+		else:
+			return np.stack([image_from_file(
+				fn, shape, normalize=normalize) for fn in fns])
 	else:
-		return np.stack(
-			[images_from_files(fn, shape, normalize=normalize) for fn in fns])
+		return np.stack([images_from_files(
+			fn, shape, normalize=normalize) for fn in fns])
 
 
 for ORIENTATION_TAG in ExifTags.TAGS.keys():
@@ -386,6 +423,19 @@ def correct_orientation(image):
 		pass
 
 	return image
+
+
+def get_fold_indices(n_folds, l):
+
+	pos = np.linspace(0, l, n_folds + 1, dtype=int)
+	indices =[]
+
+	for i in range(n_folds):
+		idx = np.array([False] * l)
+		idx[pos[i]:pos[i + 1]] = True
+		indices.append(idx)
+
+	return indices
 
 
 if __name__ == '__main__':
