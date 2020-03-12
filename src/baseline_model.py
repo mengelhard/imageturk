@@ -43,7 +43,7 @@ def main():
 		'dropout_pct': [0, .25, .5],
 		'train_mobilenet': [True, False],
 		'max_epochs_no_improve': np.arange(3),
-		'batch_size': [10, 15],
+		'batch_size': [10],
 		'val_fold': np.arange(4)
 	}
 
@@ -68,7 +68,7 @@ def main():
 			with tf.compat.v1.Session() as s:
 
 				train_stats, val_stats = mdl.train(s, **hyperparams)
-				y_pred, y, mse_all = mdl.predict(s, 'val')
+				y_pred, y, mse_all = mdl.predict(s, 'val', hyperparams['batch_size'])
 
 			mse = np.mean((y - y_pred) ** 2, axis=0)
 			mse_dict = {('mse_%s' % o): v for o, v in zip(const.OUTCOMES, mse)}
@@ -211,7 +211,7 @@ class BaselineModel:
 		return train_stats, val_stats
 
 
-	def predict(self, sess, part):
+	def predict(self, sess, part, batch_size):
 
 		assert part in ['all', 'train', 'val', 'test']
 
