@@ -53,7 +53,7 @@ def main():
 
 	rw = ResultsWriter(resultcols)
 
-	for i in range(30):
+	for i in range(200):
 
 		tf.reset_default_graph()
 
@@ -63,22 +63,22 @@ def main():
 
 		mdl = BaselineModel(dl, **hyperparams)
 
-		#try:
+		try:
 
-		with tf.compat.v1.Session() as s:
+			with tf.compat.v1.Session() as s:
 
-			train_stats, val_stats = mdl.train(s, max_epochs=1, **hyperparams)
-			y_pred, y, mse_all = mdl.predict(s, 'val', hyperparams['batch_size'])
+				train_stats, val_stats = mdl.train(s, **hyperparams)
+				y_pred, y, mse_all = mdl.predict(s, 'val', hyperparams['batch_size'])
 
-		mse = np.mean((y - y_pred) ** 2, axis=0)
-		mse_dict = {('mse_%s' % o): v for o, v in zip(const.OUTCOMES, mse)}
+			mse = np.mean((y - y_pred) ** 2, axis=0)
+			mse_dict = {('mse_%s' % o): v for o, v in zip(const.OUTCOMES, mse)}
 
-		rw.write(i, {'status': 'complete', **mse_dict, **hyperparams})
-		rw.plot(i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse)
+			rw.write(i, {'status': 'complete', **mse_dict, **hyperparams})
+			rw.plot(i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse)
 
-		#except:
+		except:
 
-		#	rw.write(i, {'status': 'failed', **hyperparams})
+			rw.write(i, {'status': 'failed', **hyperparams})
 
 
 class BaselineModel:
