@@ -220,19 +220,19 @@ class BaselineModel:
 		mse = []
 
 		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
-				part, batch_size)):
+			part, batch_size)):
 
-				y_pred_, mse_ = sess.run(
-					[self.y_pred, self.loss],
-					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+			y_pred_, mse_ = sess.run(
+				[self.y_pred, self.loss],
+				feed_dict={self.x: xb, self.y: yb, self.is_training: False})
 
-				y_pred.append(y_pred_)
-				y.append(yb)
-				mse.append((len(xb), mse_))
+			y_pred.append(y_pred_)
+			y.append(yb)
+			mse.append((len(xb), mse_))
 
-			mse = sum([l * mse for l, mse in mse]) / sum([l for l, mse in mse])
-			y_pred = np.concat(y_pred, axis=0)
-			y = np.concat(y, axis=0)
+		mse = sum([l * mse for l, mse in mse]) / sum([l for l, mse in mse])
+		y_pred = np.concat(y_pred, axis=0)
+		y = np.concat(y, axis=0)
 
 		return y_pred, y, mse
 
