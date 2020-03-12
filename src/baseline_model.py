@@ -35,15 +35,15 @@ def main():
 	from results_writer import ResultsWriter
 
 	hyperparam_options = {
-		'image_feature_size': 10,#np.arange(10, 300),
+		'image_feature_size': np.arange(10, 300),
 		'n_hidden_layers': [0, 1, 1, 1],
 		'hidden_layer_sizes': np.arange(10, 300),
 		'learning_rate': np.exp(np.linspace(-3, -10, 10)),
 		'activation_fn': [tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .25, .5],
 		'train_mobilenet': [True, False],
-		'max_epochs_no_improve': np.arange(5),
-		'batch_size': [10, 20, 30, 40, 50],
+		'max_epochs_no_improve': np.arange(3),
+		'batch_size': [10, 15],
 		'val_fold': np.arange(4)
 	}
 
