@@ -49,7 +49,7 @@ class ResultsWriter:
 	def write(self, result_idx, resultsdict):
 
 		values = [str(result_idx)]
-		values += [str(resultsdict[col]) for col in self.resultcols]
+		values += [str(resultsdict.get(col, np.nan)) for col in self.resultcols]
 
 		with open(self.results_fn, 'a') as results_file:
 			print(', '.join(values), file=results_file)

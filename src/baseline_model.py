@@ -132,9 +132,22 @@ class BaselineModel:
 		train_stats = []
 		val_stats = []
 
-		val_stats.append((0, sess.run(
-			self.loss,
-			feed_dict={self.x: xval, self.y: yval, self.is_training: False})))
+		val_mse = []
+
+		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
+			'val', batch_size)):
+
+			print('Starting val batch %i' % batch_idx)
+
+			loss_ = sess.run(
+				self.loss,
+				feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+
+			val_mse.append((len(xb), loss_))
+
+		val_mse = sum([l * mse for l, mse in val_mse]) / sum([l for l, mse in val_mse])
+
+		val_stats.append((0, val_mse))
 
 		if verbose:
 
@@ -148,7 +161,7 @@ class BaselineModel:
 			for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
 				'train', batch_size)):
 
-				print('Starting batch %i' % batch_idx)
+				print('Starting training batch %i' % batch_idx)
 
 				loss_, _ = sess.run(
 					[self.loss, self.train_step],
@@ -159,10 +172,23 @@ class BaselineModel:
 					train_stats.append((idx, loss_))
 
 			idx = (epoch_idx + 1) * batches_per_epoch
-			
-			val_stats.append((idx, sess.run(
-				self.loss,
-				feed_dict={self.x: xval, self.y: yval, self.is_training: False})))
+
+			val_mse = []
+
+			for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
+				'val', batch_size)):
+
+				print('Starting val batch %i' % batch_idx)
+
+				loss_ = sess.run(
+					self.loss,
+					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+
+				val_mse.append((len(xb), loss_))
+
+			val_mse = sum([l * mse for l, mse in val_mse]) / sum([l for l, mse in val_mse])
+
+			val_stats.append((idx, val_mse))
 
 			print('Completed Epoch %i' % epoch_idx)
 
