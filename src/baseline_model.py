@@ -231,8 +231,8 @@ class BaselineModel:
 			mse.append((len(xb), mse_))
 
 		mse = sum([l * mse for l, mse in mse]) / sum([l for l, mse in mse])
-		y_pred = np.concat(y_pred, axis=0)
-		y = np.concat(y, axis=0)
+		y_pred = np.concatenate(y_pred, axis=0)
+		y = np.concatenate(y, axis=0)
 
 		return y_pred, y, mse
 
