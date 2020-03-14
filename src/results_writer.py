@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import os
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve
 
 
 def main():
@@ -55,7 +56,9 @@ class ResultsWriter:
 			print(', '.join(values), file=results_file)
 
 
-	def plot(self, result_idx, train_stats, val_stats, y_pred, y, outcomes, score):
+	def plot(
+		self, result_idx, train_stats, val_stats, y_pred, y, outcomes, score,
+		dichotomize=True, **kwargs):
 
 		fig, ax = plt.subplots(
 			nrows=len(outcomes) + 1, ncols=1,
@@ -70,10 +73,20 @@ class ResultsWriter:
 
 		for i in range(len(outcomes)):
 
-			ax[i + 1].scatter(y[:, i], y_pred[:, i])
-			ax[i + 1].set_title(outcomes[i] + '(MSE = %.2f)' % score[i])
-			ax[i + 1].set_xlabel('y_true')
-			ax[i + 1].set_ylabel('y_pred')
+			if dichotomize:
+
+				fpr, tpr, _ = roc_curve(y[:, i], y_pred[:, i])
+				ax[i + 1].plot(fpr, tpr)
+				ax[i + 1].set_title(outcomes[i] + '(AUC = %.2f)' % score[i])
+				ax[i + 1].set_xlabel('False Positive Rate')
+				ax[i + 1].set_ylabel('True Positive Rate')
+
+			else:
+
+				ax[i + 1].scatter(y[:, i], y_pred[:, i])
+				ax[i + 1].set_title(outcomes[i] + '(MSE = %.2f)' % score[i])
+				ax[i + 1].set_xlabel('y_true')
+				ax[i + 1].set_ylabel('y_pred')
 
 		plt.tight_layout()
 		plt.savefig(os.path.join(

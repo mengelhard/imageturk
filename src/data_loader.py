@@ -7,6 +7,7 @@ from PIL import Image, ExifTags#, ImageOps
 import constants as const
 
 VERIFY_BATCHES = False
+PLOT_OUTCOMES = True
 
 
 def main():
@@ -23,6 +24,19 @@ def main():
 
 	print('Test data:')
 	print(dl.data['test'][const.OUTCOMES])
+
+	print('Value counts in training set:')
+
+	if PLOT_OUTCOMES:
+
+		import matplotlib.pyplot as plt
+
+		for o in const.OUTCOMES:
+
+			plt.hist(dl.data['train'][o].astype(float))
+			plt.savefig('../results/%s_hist.png' % o)
+			plt.close()
+
 
 	if VERIFY_BATCHES:
 
@@ -84,23 +98,30 @@ def main():
 
 class DataLoader:
 
-	def __init__(self, n_folds=5, val_fold=3, test_fold=4, **kwargs):
+	def __init__(
+		self, n_folds=5, val_fold=3, test_fold=4,
+		dichotomize=True, **kwargs):
 
 		self.datadir = os.path.join(
 			check_directories(const.DATA_DIRS),
 			'imageturk')
 
 		df_smok = self._get_datafile('smok')
+		df_smok['smoke'] = 'Yes'
+
 		df_non = self._get_datafile('non')
+		df_non['smoke'] = 'No'
+
+		self.dichotomize = dichotomize
 
 		data_smok = self._get_image_filenames(df_smok, 'smok').join(
-			self._get_outcomes(df_smok, 'smok'))
+			self._get_outcomes(df_smok, dichotomize=dichotomize))
 
 		data_non = self._get_image_filenames(df_non, 'non').join(
-			self._get_outcomes(df_non, 'non'))
+			self._get_outcomes(df_non, dichotomize=dichotomize))
 
 		self.n_out = len(const.OUTCOMES)
-		self.n_images = len(const.IMAGES['non'])
+		self.n_images = len(const.IMAGES)
 
 		self.data = dict()
 
@@ -152,7 +173,13 @@ class DataLoader:
 
 	def _normalize_outcomes(self, outcomes):
 
-		return (outcomes - self.train_mean[np.newaxis, :]) / self.train_std[np.newaxis, :]
+		if self.dichotomize:
+
+			return outcomes.astype(float)
+
+		else:
+
+			return (outcomes - self.train_mean[np.newaxis, :]) / self.train_std[np.newaxis, :]
 
 
 	def sample_data(self, part='all', n=1, imgfmt='array', normalize=True):
@@ -247,15 +274,16 @@ class DataLoader:
 		return fdf
 
 
-	def _get_outcomes(self, df, group):
+	def _get_outcomes(self, df, dichotomize=True):
 		return pd.DataFrame(
-			{o: const.score_scales[o](df, group) for o in const.OUTCOMES},
+			{o: const.score_outcome(
+				df, o, dichotomize=dichotomize) for o in const.OUTCOMES},
 			index=df.index)
 
 
 	def _get_image_filenames(self, df, group, verify=True):
 
-		cols = const.IMAGES[group]
+		cols = const.IMAGES
 
 		if group == 'smok':
 			basedir = os.path.join(self.datadir, 'imageturk_smoker')

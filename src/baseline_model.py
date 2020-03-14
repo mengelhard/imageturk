@@ -3,6 +3,7 @@ import tensorflow as tf
 import sys
 import os
 import datetime
+from sklearn.metrics import roc_auc_score 
 
 MODELS_PATHS = [
 	'/Users/mme/projects/models/research/slim',
@@ -36,7 +37,7 @@ def main():
 
 	hyperparam_options = {
 		'image_feature_size': np.arange(10, 300),
-		'n_hidden_layers': [0, 1, 1, 1],
+		'n_hidden_layers': [1],
 		'hidden_layer_sizes': np.arange(10, 300),
 		'learning_rate': np.exp(np.linspace(-3, -10, 10)),
 		'activation_fn': [tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
@@ -44,16 +45,17 @@ def main():
 		'train_mobilenet': [True, False],
 		'max_epochs_no_improve': np.arange(3),
 		'batch_size': [10],
-		'val_fold': np.arange(4)
+		'val_fold': np.arange(4),
+		'dichotomize': [True]
 	}
 
 	resultcols = ['status']
-	resultcols += [('mse_%s' % o) for o in const.OUTCOMES]
+	resultcols += [('mse_or_auc_%s' % o) for o in const.OUTCOMES]
 	resultcols += list(hyperparam_options.keys())
 
 	rw = ResultsWriter(resultcols)
 
-	for i in range(200):
+	for i in range(1):
 
 		tf.reset_default_graph()
 
@@ -68,13 +70,23 @@ def main():
 			with tf.compat.v1.Session() as s:
 
 				train_stats, val_stats = mdl.train(s, **hyperparams)
-				y_pred, y, mse_all = mdl.predict(s, 'val', hyperparams['batch_size'])
+				y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
 
-			mse = np.mean((y - y_pred) ** 2, axis=0)
-			mse_dict = {('mse_%s' % o): v for o, v in zip(const.OUTCOMES, mse)}
+			if hyperparams['dichotomize']:
 
-			rw.write(i, {'status': 'complete', **mse_dict, **hyperparams})
-			rw.plot(i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse)
+				mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
+
+			else:
+
+				mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
+
+			mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
+				const.OUTCOMES, mse_or_auc)}
+
+			rw.write(i, {'status': 'complete', **mse_or_auc_dict, **hyperparams})
+			rw.plot(
+				i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
+				**hyperparams)
 
 		except:
 
@@ -132,7 +144,7 @@ class BaselineModel:
 		train_stats = []
 		val_stats = []
 
-		val_mse = []
+		val_loss = []
 
 		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
 			'val', batch_size)):
@@ -143,11 +155,11 @@ class BaselineModel:
 				self.loss,
 				feed_dict={self.x: xb, self.y: yb, self.is_training: False})
 
-			val_mse.append((len(xb), loss_))
+			val_loss.append((len(xb), loss_))
 
-		val_mse = sum([l * mse for l, mse in val_mse]) / sum([l for l, mse in val_mse])
+		val_loss = sum([l * v for l, v in val_loss]) / sum([l for l, v in val_loss])
 
-		val_stats.append((0, val_mse))
+		val_stats.append((0, val_loss))
 
 		if verbose:
 
@@ -173,7 +185,7 @@ class BaselineModel:
 
 			idx = (epoch_idx + 1) * batches_per_epoch
 
-			val_mse = []
+			val_loss = []
 
 			for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
 				'val', batch_size)):
@@ -184,11 +196,11 @@ class BaselineModel:
 					self.loss,
 					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
 
-				val_mse.append((len(xb), loss_))
+				val_loss.append((len(xb), loss_))
 
-			val_mse = sum([l * mse for l, mse in val_mse]) / sum([l for l, mse in val_mse])
+			val_loss = sum([l * v for l, v in val_loss]) / sum([l for l, v in val_loss])
 
-			val_stats.append((idx, val_mse))
+			val_stats.append((idx, val_loss))
 
 			print('Completed Epoch %i' % epoch_idx)
 
@@ -217,24 +229,32 @@ class BaselineModel:
 
 		y_pred = []
 		y = []
-		mse = []
+		loss = []
 
 		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
 			part, batch_size)):
 
-			y_pred_, mse_ = sess.run(
-				[self.y_pred, self.loss],
-				feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+			if self.dataloader.dichotomize:
+
+				y_pred_, loss_ = sess.run(
+					[self.y_prob_pred, self.loss],
+					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+
+			else:
+
+				y_pred_, loss_ = sess.run(
+					[self.y_pred, self.loss],
+					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
 
 			y_pred.append(y_pred_)
 			y.append(yb)
-			mse.append((len(xb), mse_))
+			loss.append((len(xb), loss_))
 
-		mse = sum([l * mse for l, mse in mse]) / sum([l for l, mse in mse])
+		loss = sum([l * v for l, v in loss]) / sum([l for l, v in loss])
 		y_pred = np.concatenate(y_pred, axis=0)
 		y = np.concatenate(y, axis=0)
 
-		return y_pred, y, mse
+		return y_pred, y, loss
 
 
 	def _build_placeholders(self):
@@ -288,9 +308,13 @@ class BaselineModel:
 				activation_fn=self.activation_fn,
 				training=self.is_training)
 
-		feature_vec = tf.concat(
-			[tf.reduce_mean(feat, axis=1), tf.reduce_max(feat, axis=1)],
-			axis=1)
+		# feature_vec = tf.concat(
+		# 	[tf.reduce_mean(feat, axis=1), tf.reduce_max(feat, axis=1)],
+		# 	axis=1)
+
+		feature_vec = tf.reshape(
+			feat,
+			(-1, self.image_feature_size * self.n_images))
 
 		with tf.compat.v1.variable_scope('outcomes'):
 
@@ -306,12 +330,25 @@ class BaselineModel:
 				self.n_out,
 				activation=None)
 
+			if self.dataloader.dichotomize:
+
+				self.y_prob_pred = tf.nn.sigmoid(self.y_pred)
+
 
 	def _build_train_step(self):
 
-		self.loss = tf.compat.v1.losses.mean_squared_error(
-			self.y,
-			self.y_pred)
+		if self.dataloader.dichotomize:
+
+			self.loss = tf.reduce_mean(
+				tf.nn.sigmoid_cross_entropy_with_logits(
+					labels=self.y,
+					logits=self.y_pred))
+
+		else:
+
+			self.loss = tf.compat.v1.losses.mean_squared_error(
+				self.y,
+				self.y_pred)
 
 		if self.train_mobilenet:
 
