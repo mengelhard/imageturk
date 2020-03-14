@@ -55,7 +55,7 @@ def main():
 
 	rw = ResultsWriter(resultcols)
 
-	for i in range(1):
+	for i in range(300):
 
 		tf.reset_default_graph()
 
