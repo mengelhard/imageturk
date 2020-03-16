@@ -25,6 +25,7 @@ for f in CHECKPOINT_FILE_PATHS:
 	if os.path.exists(f):
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
+LOGIT_FEATURES = 1001
 GLOBAL_POOL_N_FEATURES = 1280
 
 import constants as const
@@ -36,11 +37,11 @@ def main():
 	from results_writer import ResultsWriter
 
 	hyperparam_options = {
-		'image_feature_size': np.arange(10, 300),
-		'n_hidden_layers': [1],
+		'image_feature_size': [None],#np.arange(10, 300),
+		'n_hidden_layers': [0, 1],
 		'hidden_layer_sizes': np.arange(10, 300),
-		'learning_rate': np.exp(np.linspace(-3, -10, 10)),
-		'activation_fn': [tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
+		'learning_rate': [1e-3, 3e-4, 1e-4],#np.exp(np.linspace(-3, -10, 10)),
+		'activation_fn': [tf.nn.relu],#[tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .25, .5],
 		'train_mobilenet': [True, False],
 		'max_epochs_no_improve': np.arange(3),
@@ -290,45 +291,63 @@ class BaselineModel:
 		self.mobilenet_saver = tf.compat.v1.train.Saver(
 			ema.variables_to_restore())
 
-		features_flat = tf.squeeze(endpoints['global_pool'], [1, 2])
+		#features_flat = tf.squeeze(endpoints['global_pool'], [1, 2])
+		features_flat = logits
+
+		# self.image_features = tf.reshape(
+		# 	features_flat,
+		# 	(-1, self.n_images, GLOBAL_POOL_N_FEATURES))
 
 		self.image_features = tf.reshape(
 			features_flat,
-			(-1, self.n_images, GLOBAL_POOL_N_FEATURES))
+			(-1, self.n_images, LOGIT_FEATURES))
 
 
 	def _build_model(self):
 
-		with tf.compat.v1.variable_scope('image_features'):
+		# with tf.compat.v1.variable_scope('image_features'):
 
-			feat = mlp(
-				self.image_features,
-				[self.image_feature_size],
-				dropout_pct=self.dropout_pct,
-				activation_fn=self.activation_fn,
-				training=self.is_training)
+		# 	feat = mlp(
+		# 		self.image_features,
+		# 		[self.image_feature_size],
+		# 		dropout_pct=self.dropout_pct,
+		# 		activation_fn=self.activation_fn,
+		# 		training=self.is_training)
 
-		# feature_vec = tf.concat(
-		# 	[tf.reduce_mean(feat, axis=1), tf.reduce_max(feat, axis=1)],
-		# 	axis=1)
+		feat = self.image_features
 
-		feature_vec = tf.reshape(
-			feat,
-			(-1, self.image_feature_size * self.n_images))
+		feature_vec = tf.concat(
+			[tf.reduce_mean(feat, axis=1), tf.reduce_max(feat, axis=1)],
+			axis=1)
+
+		# feature_vec = tf.reshape(
+		# 	feat,
+		# 	(-1, self.image_feature_size * self.n_images))
 
 		with tf.compat.v1.variable_scope('outcomes'):
 
-			hidden_layer = mlp(
-				feature_vec,
-				self.hidden_layer_sizes,
-				dropout_pct=self.dropout_pct,
-				activation_fn=self.activation_fn,
-				training=self.is_training)
+			with tf.compat.v1.variable_scope('mlp'):
 
-			self.y_pred = tf.layers.dense(
-				hidden_layer,
-				self.n_out,
-				activation=None)
+				hidden_layer = mlp(
+					feature_vec,
+					self.hidden_layer_sizes,
+					dropout_pct=self.dropout_pct,
+					activation_fn=self.activation_fn,
+					training=self.is_training)
+
+			with tf.compat.v1.variable_scope('linear'):
+
+				# self.y_pred = tf.layers.dense(
+				# 	hidden_layer,
+				# 	self.n_out,
+				# 	activation=None)
+
+				self.y_pred = mlp(
+					hidden_layer,
+					[self.n_out],
+					dropout_pct=self.dropout_pct,
+					activation_fn=None,
+					training=self.is_training)
 
 			if self.dataloader.dichotomize:
 
