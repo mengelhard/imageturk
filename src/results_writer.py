@@ -91,6 +91,7 @@ class ResultsWriter:
 		plt.tight_layout()
 		plt.savefig(os.path.join(
 			self.results_dir, 'results_' + str(result_idx) + '.png'))
+		plt.close()
 
 
 if __name__ == '__main__':
