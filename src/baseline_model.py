@@ -106,7 +106,7 @@ def main():
 				result = np.mean([x[tuning_target] for x in fold_results])
 				results_list.append((hyperparams, result))
 
-	hps, results = list(zip(results_list))
+	hps, results = list(zip(*results_list))
 	hyperparams = hps[np.argmax(results)]
 
 	tf.reset_default_graph()
