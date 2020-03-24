@@ -17,7 +17,7 @@ for f in const.CHECKPOINT_FILE_PATHS:
 	if os.path.exists(f):
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
-NUM_TUNING_RUNS = 100
+NUM_TUNING_RUNS = 70
 
 
 def main():
@@ -26,16 +26,16 @@ def main():
 	from results_writer import ResultsWriter
 
 	hyperparam_options = {
-		'n_image_layers': [0, 1],
-		'image_feature_sizes': np.arange(10, 100),
+		'n_image_layers': [0],#[0, 1],
+		'image_feature_sizes': [0],#np.arange(10, 100),
 		'n_hidden_layers': [0, 1],
 		'hidden_layer_sizes': np.arange(10, 300),
-		'learning_rate': np.logspace(-2.5, -4.5),
+		'learning_rate': np.logspace(-3.5, -6.5),
 		'activation_fn': [tf.nn.relu],#[tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
-		'dropout_pct': [0, .25, .5],
-		'agg_method': ['concat', 'pool'],
+		'dropout_pct': [0, .05, .1, .15, .2, .3, .5],
+		'agg_method': ['pool'],#['concat', 'pool'],
 		'train_mobilenet': [True, False],
-		'mobilenet_endpoint': ['global_pool', 'Logits'],
+		'mobilenet_endpoint': ['global_pool'],#['global_pool', 'Logits'],
 		'max_epochs_no_improve': np.arange(3),
 		'batch_size': [10],
 		'dichotomize': [True]
@@ -68,38 +68,38 @@ def main():
 
 			fold_results = []
 
-			try:
+			#try:
 
-				with tf.compat.v1.Session() as s:
+			with tf.compat.v1.Session() as s:
 
-					train_stats, val_stats = mdl.train(s, **hyperparams)
-					y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
+				train_stats, val_stats = mdl.train(s, **hyperparams)
+				y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
 
-				if hyperparams['dichotomize']:
+			if hyperparams['dichotomize']:
 
-					mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
+				mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
 
-				else:
+			else:
 
-					mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
+				mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
 
-				mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
-					const.OUTCOMES, mse_or_auc)}
+			mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
+				const.OUTCOMES, mse_or_auc)}
 
-				fold_results.append(mse_or_auc_dict)
+			fold_results.append(mse_or_auc_dict)
 
-				rw.write(i, {
-					'status': 'complete',
-					'fold': val_fold,
-					**mse_or_auc_dict,
-					**hyperparams})
-				rw.plot(
-					i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
-					**hyperparams)
+			rw.write(i, {
+				'status': 'complete',
+				'fold': val_fold,
+				**mse_or_auc_dict,
+				**hyperparams})
+			rw.plot(
+				i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
+				**hyperparams)
 
-			except:
+			# except:
 
-				rw.write(i, {'status': 'failed', **hyperparams})
+			# 	rw.write(i, {'status': 'failed', **hyperparams})
 
 			if len(fold_results) > 0:
 
@@ -317,15 +317,15 @@ class BaselineModel:
 
 	def _build_placeholders(self):
 
-		self.x = tf.placeholder(
+		self.x = tf.compat.v1.placeholder(
 			dtype=tf.float32,
 			shape=(None, self.n_images, 224, 224, 3))
 
-		self.y = tf.placeholder(
+		self.y = tf.compat.v1.placeholder(
 			dtype=tf.float32,
 			shape=(None, self.n_out))
 
-		self.is_training = tf.placeholder(
+		self.is_training = tf.compat.v1.placeholder(
 			dtype=tf.bool,
 			shape=())
 
@@ -362,14 +362,21 @@ class BaselineModel:
 
 		with tf.compat.v1.variable_scope('image_features'):
 
+			if self.dropout_pct > 0:
+
+				feat = tf.layers.dropout(
+					self.image_features,
+					rate=self.dropout_pct,
+					training=self.is_training)
+
 			feat = mlp(
-				self.image_features,
+				feat,
 				self.image_feature_sizes,
 				dropout_pct=self.dropout_pct,
 				activation_fn=self.activation_fn,
 				training=self.is_training)
 
-		feat = self.image_features
+		#feat = self.image_features
 
 		if self.agg_method == 'pool':
 
@@ -402,7 +409,7 @@ class BaselineModel:
 				self.y_pred = mlp(
 					hidden_layer,
 					[self.n_out],
-					dropout_pct=self.dropout_pct,
+					dropout_pct=0.,
 					activation_fn=None,
 					training=self.is_training)
 

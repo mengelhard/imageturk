@@ -7,9 +7,9 @@ import sys, os
 
 DATA_DIRS = ['/Users/mme/data', '/scratch/mme4']
 
-DATA_SUBDIR = {
-	'smok': 'imageturk_smoker',
-	'non': 'imageturk_nonsmoker'
+DATA_SUBDIRS = {
+	'smok': ['imageturk_smoker', 'imageturk_smoker_b2'],
+	'non': ['imageturk_nonsmoker', 'imageturk_nonsmoker_b2']
 }
 
 MODELS_PATHS = [
@@ -32,24 +32,26 @@ IMAGES = [
 	'QID92', 'QID7', 'QID93', 'QID10', 'QID96'
 ]
 
-OUTCOMES = [
-	'swan_i',
-	'swan_hi',
-	'phq',
-	'stress',
-	'sleep_reg',
-	'sleep_dist',
-	'eveningness',
-	'food_healthiness',
-	'food_insecurity',
-	'smoking',
-	'alcohol',
-	'neighborhood_crime',
-	'neighborhood_noise',
-	'neighborhood_clean',
-	'physical_activity',
-	'education_level'
-]
+# OUTCOMES = [
+# 	'swan_i',
+# 	'swan_hi',
+# 	'phq',
+# 	'stress',
+# 	'sleep_reg',
+# 	'sleep_dist',
+# 	'eveningness',
+# 	'food_healthiness',
+# 	'food_insecurity',
+# 	'smoking',
+# 	'alcohol',
+# 	'neighborhood_crime',
+# 	'neighborhood_noise',
+# 	'neighborhood_clean',
+# 	'physical_activity',
+# 	'education_level'
+# ]
+
+OUTCOMES = ['smoking']
 
 CUTOFFS = {# DIVIDE BY >CUTOFF
 	'swan_i': 0,

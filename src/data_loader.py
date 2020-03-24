@@ -114,10 +114,10 @@ class DataLoader:
 
 		self.dichotomize = dichotomize
 
-		data_smok = self._get_image_filenames(df_smok, 'smok').join(
+		data_smok = self._get_image_filenames(df_smok).join(
 			self._get_outcomes(df_smok, dichotomize=dichotomize))
 
-		data_non = self._get_image_filenames(df_non, 'non').join(
+		data_non = self._get_image_filenames(df_non).join(
 			self._get_outcomes(df_non, dichotomize=dichotomize))
 
 		self.n_out = len(const.OUTCOMES)
@@ -220,20 +220,29 @@ class DataLoader:
 
 	def _get_datafile(self, group):
 
-		subdir = const.DATA_SUBDIR[group]
+		subdirs = const.DATA_SUBDIRS[group]
 
-		fns = listdir_by_ext(
-			os.path.join(self.datadir, subdir),
-			'.csv')
+		frames = []
 
-		print('Found %i .csv files in' % len(fns), subdir)
-		print('Reading', fns[-1])
+		for subdir in subdirs:
 
-		return self._filter_imageturk_csv(
-			*self._read_imageturk_csv(
-				os.path.join(self.datadir, subdir, fns[-1])),
-			group
-			)
+			d = os.path.join(self.datadir, subdir)
+
+			fns = listdir_by_ext(d, '.csv')
+
+			print('Found %i .csv files in' % len(fns), subdir)
+			print('Reading', fns[-1])
+
+			df, coldict = self._read_imageturk_csv(
+				os.path.join(d, fns[-1]))
+
+			df = self._filter_imageturk_csv(df, coldict)
+
+			df['base_dir'] = d
+
+			frames.append(df)
+
+		return pd.concat(frames, axis=0, sort=True)
 
 
 	def _read_imageturk_csv(self, fn):
@@ -252,7 +261,7 @@ class DataLoader:
 		return df.set_index('_recordId'), coldict
 
 
-	def _filter_imageturk_csv(self, df, coldict, group):
+	def _filter_imageturk_csv(self, df, coldict):
 
 		imagecols = get_filecols(df)
 		sizecols = [x.split('_')[0] + '_FILE_SIZE' for x in imagecols]
@@ -281,29 +290,24 @@ class DataLoader:
 			index=df.index)
 
 
-	def _get_image_filenames(self, df, group, verify=True):
+	def _get_image_filenames(self, df, verify=True):
 
 		cols = const.IMAGES
 
-		if group == 'smok':
-			basedir = os.path.join(self.datadir, 'imageturk_smoker')
-		elif group == 'non':
-			basedir = os.path.join(self.datadir, 'imageturk_nonsmoker')
-
 		fn_dict = {c: imageturk_fn_from_qcol(
-			df, basedir, c, verify=verify) for c in cols}
+			df, c, verify=verify) for c in cols}
 
 		return pd.DataFrame(fn_dict, index=df.index)
 
 
-def imageturk_fn_from_qcol(df, basedir, qcol, verify=True):
+def imageturk_fn_from_qcol(df, qcol, verify=True):
 	filename = replace_all(
 		df[qcol + '_FILE_NAME'],
-		['-', ' ', '(', ')', '[', ']', '~'],
+		['-', ' ', '(', ')', '[', ']', '~', '#'],
 		'_')
 	filename = replace_all(filename, ['.heic', '.HEIC'], '.jpg')
 	basename = df.index + '~' + filename
-	fns = basedir + '/' + qcol + '_FILE_ID/' + basename
+	fns = df['base_dir'] + '/' + qcol + '_FILE_ID/' + basename
 	if verify:
 		for fn in fns.values:
 			if not os.path.isfile(fn):
