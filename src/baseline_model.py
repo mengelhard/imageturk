@@ -68,38 +68,38 @@ def main():
 
 			fold_results = []
 
-			#try:
+			try:
 
-			with tf.compat.v1.Session() as s:
+				with tf.compat.v1.Session() as s:
 
-				train_stats, val_stats = mdl.train(s, **hyperparams)
-				y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
+					train_stats, val_stats = mdl.train(s, **hyperparams)
+					y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
 
-			if hyperparams['dichotomize']:
+				if hyperparams['dichotomize']:
 
-				mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
+					mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
 
-			else:
+				else:
 
-				mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
+					mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
 
-			mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
-				const.OUTCOMES, mse_or_auc)}
+				mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
+					const.OUTCOMES, mse_or_auc)}
 
-			fold_results.append(mse_or_auc_dict)
+				fold_results.append(mse_or_auc_dict)
 
-			rw.write(i, {
-				'status': 'complete',
-				'fold': val_fold,
-				**mse_or_auc_dict,
-				**hyperparams})
-			rw.plot(
-				i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
-				**hyperparams)
+				rw.write(i, {
+					'status': 'complete',
+					'fold': val_fold,
+					**mse_or_auc_dict,
+					**hyperparams})
+				rw.plot(
+					i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
+					**hyperparams)
 
-			# except:
+			except:
 
-			# 	rw.write(i, {'status': 'failed', **hyperparams})
+				rw.write(i, {'status': 'failed', **hyperparams})
 
 			if len(fold_results) > 0:
 
