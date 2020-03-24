@@ -369,6 +369,10 @@ class BaselineModel:
 					rate=self.dropout_pct,
 					training=self.is_training)
 
+			else:
+
+				feat = self.image_features
+
 			feat = mlp(
 				feat,
 				self.image_feature_sizes,
