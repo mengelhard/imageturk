@@ -489,7 +489,7 @@ def mlp(x, hidden_layer_sizes,
 
 def select_hyperparams(hpdict):
 
-	return {k: np.random.choice(v) for k, v in hpdict.items()}
+	return {k: v[np.random.rand(len(v))] for k, v in hpdict.items()}
 
 
 if __name__ == '__main__':
