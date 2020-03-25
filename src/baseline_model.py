@@ -33,7 +33,7 @@ def main():
 		'learning_rate': np.logspace(-3.5, -6.5),
 		'activation_fn': [tf.nn.relu],#[tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .05, .1, .15, .2, .3, .5],
-		'agg_method': ['pool'],#['concat', 'pool'],
+		'agg_method': ['pool', 6, 7],#['concat', 'pool'],
 		'train_mobilenet': [True, False],
 		'mobilenet_endpoint': ['global_pool'],#['global_pool', 'Logits'],
 		'max_epochs_no_improve': np.arange(3),
@@ -62,7 +62,7 @@ def main():
 
 			print('Training with val_fold =', val_fold)
 
-			tf.reset_default_graph()
+			tf.compat.v1.reset_default_graph()
 			dl = DataLoader(val_fold=val_fold)
 			mdl = BaselineModel(dl, **hyperparams)
 
@@ -109,7 +109,7 @@ def main():
 	hps, results = list(zip(*results_list))
 	hyperparams = hps[np.argmax(results)]
 
-	tf.reset_default_graph()
+	tf.compat.v1.reset_default_graph()
 	dl = DataLoader(val_fold=3)
 	mdl = BaselineModel(dl, **hyperparams)
 
@@ -396,6 +396,10 @@ class BaselineModel:
 			feature_vec = tf.reshape(
 				feat,
 				(-1, image_feature_layers[-1] * self.n_images))
+
+		elif np.issubdtype(self.agg_method, np.integer):
+
+			feature_vec = feat[:, self.agg_method, :]
 
 		with tf.compat.v1.variable_scope('outcomes'):
 

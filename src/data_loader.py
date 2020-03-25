@@ -76,8 +76,8 @@ def main():
 
 	x, y = dl.sample_data(normalize=False)
 
-	x = np.squeeze(x)
-	y = np.squeeze(y)
+	x = np.squeeze(x, axis=0)
+	y = np.squeeze(y, axis=0)
 
 	print('Outcomes for displayed images:')
 	print(list(zip(const.OUTCOMES, y)))
