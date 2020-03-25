@@ -360,6 +360,8 @@ class BaselineModel:
 
 	def _build_model(self):
 
+		print('agg method type is', type(self.agg_method))
+
 		with tf.compat.v1.variable_scope('image_features'):
 
 			if self.dropout_pct > 0:
@@ -397,7 +399,7 @@ class BaselineModel:
 				feat,
 				(-1, image_feature_layers[-1] * self.n_images))
 
-		elif np.issubdtype(self.agg_method, np.integer):
+		elif type(self.agg_method) is int:
 
 			feature_vec = feat[:, self.agg_method, :]
 
