@@ -17,7 +17,7 @@ for f in const.CHECKPOINT_FILE_PATHS:
 	if os.path.exists(f):
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
-NUM_TUNING_RUNS = 30
+NUM_TUNING_RUNS = 70
 
 
 def main():
@@ -28,17 +28,17 @@ def main():
 	hyperparam_options = {
 		'n_image_layers': [0],#[0, 1],
 		'image_feature_sizes': [0],#np.arange(10, 100),
-		'n_hidden_layers': [0],#[0, 1],
+		'n_hidden_layers': [0, 1],
 		'hidden_layer_sizes': np.arange(10, 300),
 		'learning_rate': np.logspace(-4., -6.5),
-		'activation_fn': [tf.nn.relu],#[tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
+		'activation_fn': [tf.nn.relu, tf.nn.sigmoid],#[tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .05, .1, .15, .2, .3, .5],
-		'agg_method': ['pool', 6, 7],#['concat', 'pool'],
+		'agg_method': ['pool', 'pool', 'pool', 0, 2, 6],#['concat', 'pool'],
 		'train_mobilenet': [True, False],
 		'mobilenet_endpoint': ['global_pool'],#['global_pool', 'Logits'],
 		'max_epochs_no_improve': np.arange(3),
 		'batch_size': [10],
-		'dichotomize': [True]
+		'dichotomize': [False]
 	}
 
 	resultcols = ['status']
