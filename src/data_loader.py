@@ -100,25 +100,47 @@ class DataLoader:
 
 	def __init__(
 		self, n_folds=5, val_fold=3, test_fold=4,
-		dichotomize=True, **kwargs):
+		dichotomize=False, **kwargs):
 
 		self.datadir = os.path.join(
 			check_directories(const.DATA_DIRS),
 			'imageturk')
 
-		df_smok = self._get_datafile('smok')
+		df_smok, smok_coldicts = self._get_datafile('smok')
 		df_smok['smoke'] = 'Yes'
 
-		df_non = self._get_datafile('non')
+		df_non, non_coldicts = self._get_datafile('non')
 		df_non['smoke'] = 'No'
+
+		assert const.ITEMS['smok'].keys() == const.ITEMS['non'].keys()
+
+		for o in const.ITEMS['smok'].keys():
+
+			if o == 'smoking':
+				continue
+
+			smok_items = const.ITEMS['smok'][o]
+			non_items = const.ITEMS['non'][o]
+
+			for smok_item, non_item in zip(smok_items, non_items):
+
+				v0 = smok_coldicts[0].get(smok_item, np.nan)
+				v1 = smok_coldicts[1].get(smok_item, np.nan)
+				v2 = non_coldicts[0].get(non_item, np.nan)
+				v3 = non_coldicts[1].get(non_item, np.nan)
+
+				vstr = '\n'.join(['V%i: %s' % (i, str(v)) for i, v in enumerate(
+					[v0, v1, v2, v3])])
+
+				assert (v0 == v1) and (v1 == v2) and (v2 == v3), vstr
 
 		self.dichotomize = dichotomize
 
 		data_smok = self._get_image_filenames(df_smok).join(
-			self._get_outcomes(df_smok, dichotomize=dichotomize))
+			self._get_outcomes(df_smok, 'smok', dichotomize=dichotomize))
 
 		data_non = self._get_image_filenames(df_non).join(
-			self._get_outcomes(df_non, dichotomize=dichotomize))
+			self._get_outcomes(df_non, 'non', dichotomize=dichotomize))
 
 		self.n_out = len(const.OUTCOMES)
 		self.n_images = len(const.IMAGES)
@@ -223,6 +245,7 @@ class DataLoader:
 		subdirs = const.DATA_SUBDIRS[group]
 
 		frames = []
+		coldicts = []
 
 		for subdir in subdirs:
 
@@ -233,16 +256,17 @@ class DataLoader:
 			print('Found %i .csv files in' % len(fns), subdir)
 			print('Reading', fns[-1])
 
-			df, coldict = self._read_imageturk_csv(
+			df, coldict, reversedict = self._read_imageturk_csv(
 				os.path.join(d, fns[-1]))
 
-			df = self._filter_imageturk_csv(df, coldict)
+			df = self._filter_imageturk_csv(df, reversedict)
 
 			df['base_dir'] = d
 
 			frames.append(df)
+			coldicts.append(coldict)
 
-		return pd.concat(frames, axis=0, sort=True)
+		return pd.concat(frames, axis=0, sort=True), coldicts
 
 
 	def _read_imageturk_csv(self, fn):
@@ -254,11 +278,12 @@ class DataLoader:
 		assert len(colnames) == len(set(colnames))
 
 		coltext = [x[1] for x in df.columns.values]
-		coldict = {y:x for x, y in zip(colnames, coltext)}
+		coldict = {x:y for x, y in zip(colnames, coltext)}
+		reversedict = {y:x for x, y in zip(colnames, coltext)}
 
 		df.columns = colnames
 
-		return df.set_index('_recordId'), coldict
+		return df.set_index('_recordId'), coldict, reversedict
 
 
 	def _filter_imageturk_csv(self, df, coldict):
@@ -283,10 +308,10 @@ class DataLoader:
 		return fdf
 
 
-	def _get_outcomes(self, df, dichotomize=True):
+	def _get_outcomes(self, df, group, dichotomize=True):
 		return pd.DataFrame(
 			{o: const.score_outcome(
-				df, o, dichotomize=dichotomize) for o in const.OUTCOMES},
+				df, group, o, dichotomize=dichotomize) for o in const.OUTCOMES},
 			index=df.index)
 
 

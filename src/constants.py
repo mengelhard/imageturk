@@ -48,10 +48,15 @@ IMAGES = [
 # 	'neighborhood_noise',
 # 	'neighborhood_clean',
 # 	'physical_activity',
-# 	'education_level'
+# 	'education_level',
+# 	'age',
+# 	'sex',
+# 	'income'
 # ]
 
-OUTCOMES = ['smoking']
+# OUTCOMES = ['smoking']
+
+OUTCOMES = ['age', 'sex', 'income']
 
 CUTOFFS = {# DIVIDE BY >CUTOFF
 	'swan_i': 0,
@@ -69,28 +74,59 @@ CUTOFFS = {# DIVIDE BY >CUTOFF
 	'neighborhood_noise': 1,
 	'neighborhood_clean': 2,
 	'physical_activity': 7,
-	'education_level': 3
+	'education_level': 3,
+	'age': 1985,
+	'sex': 1,
+	'income': 4
 }
 
 ITEMS = {
-	'swan_i': ['QID84_' + str(x + 1) for x in range(9)],
-	'swan_hi': ['QID84_' + str(x + 10) for x in range(9)],
-	'phq': ['QID17_' + str(x + 1) for x in range(9)],
-	'stress_pos': ['QID70_' + str(x) for x in [1, 2, 3, 6, 9, 10]],
-	'stress_neg': ['QID70_' + str(x) for x in [4, 5, 7, 8]],
-	'sleep_reg': ['QID13'],
-	'sleep_dist': ['QID14'],
-	'eveningness': ['QID15'],
-	'food_healthiness': ['QID21_1', 'QID21_2', 'QID21_3', 'QID23_1',
-						 'QID23_2', 'QID23_3', 'QID23_4'],
-	'food_insecurity': ['QID25', 'QID26', 'QID27', 'QID28', 'QID29'],
-	'smoking': ['smoke'],
-	'alcohol': ['QID57_1'],
-	'neighborhood_crime': ['QID73_1'],
-	'neighborhood_noise': ['QID73_2'],
-	'neighborhood_clean': ['QID73_3'],
-	'physical_activity': ['QID75_1', 'QID76_1', 'QID77_1'],
-	'education_level': ['QID121']
+	'smok': {
+		'swan_i': ['QID84_' + str(x + 1) for x in range(9)],
+		'swan_hi': ['QID84_' + str(x + 10) for x in range(9)],
+		'phq': ['QID17_' + str(x + 1) for x in range(9)],
+		'stress_pos': ['QID70_' + str(x) for x in [1, 2, 3, 6, 9, 10]],
+		'stress_neg': ['QID70_' + str(x) for x in [4, 5, 7, 8]],
+		'sleep_reg': ['QID13'],
+		'sleep_dist': ['QID14'],
+		'eveningness': ['QID15'],
+		'food_healthiness': ['QID21_1', 'QID21_2', 'QID21_3', 'QID23_1',
+							 'QID23_2', 'QID23_3', 'QID23_4'],
+		'food_insecurity': ['QID25', 'QID26', 'QID27', 'QID28', 'QID29'],
+		'smoking': ['smoke'],
+		'alcohol': ['QID57_1'],
+		'neighborhood_crime': ['QID73_1'],
+		'neighborhood_noise': ['QID73_2'],
+		'neighborhood_clean': ['QID73_3'],
+		'physical_activity': ['QID75_1', 'QID76_1', 'QID77_1'],
+		'education_level': ['QID121'],
+		'age': ['QID126_TEXT'],
+		'sex': ['QID116'],
+		'income': ['QID128']
+	},
+	'non': {
+		'swan_i': ['QID84_' + str(x + 1) for x in range(9)],
+		'swan_hi': ['QID84_' + str(x + 10) for x in range(9)],
+		'phq': ['QID17_' + str(x + 1) for x in range(9)],
+		'stress_pos': ['QID70_' + str(x) for x in [1, 2, 3, 6, 9, 10]],
+		'stress_neg': ['QID70_' + str(x) for x in [4, 5, 7, 8]],
+		'sleep_reg': ['QID13'],
+		'sleep_dist': ['QID14'],
+		'eveningness': ['QID15'],
+		'food_healthiness': ['QID21_1', 'QID21_2', 'QID21_3', 'QID23_1',
+							 'QID23_2', 'QID23_3', 'QID23_4'],
+		'food_insecurity': ['QID25', 'QID26', 'QID27', 'QID28', 'QID29'],
+		'smoking': ['smoke'],
+		'alcohol': ['QID57_1'],
+		'neighborhood_crime': ['QID73_1'],
+		'neighborhood_noise': ['QID73_2'],
+		'neighborhood_clean': ['QID73_3'],
+		'physical_activity': ['QID75_1', 'QID76_1', 'QID77_1'],
+		'education_level': ['QID121'],
+		'age': ['QID115_TEXT'],
+		'sex': ['QID116'],
+		'income': ['QID123']
+	}
 }
 
 SWAN_SCALE = {
@@ -181,6 +217,25 @@ NEIGHBORHOOD_SCALE = {
 	'Strongly Agree': 4
 }
 
+SEX_SCALE = {
+	'Female': 0,
+	'Prefer not to say': 1,
+	'Male': 2
+}
+
+INCOME_SCALE = {
+	'Less than $12,000': 0,
+	'$12,000 to $15,999': 1,
+	'$16,000 to $24,999': 2,
+	'$25,000 to $34,999': 3,
+	'$35,000 to $49,999': 4,
+	'$50,000 to $74,999': 5,
+	'$75,000 to $99,999': 6,
+	'$100,000 to $149,999': 7,
+	'$150,000 to $199,999': 8,
+	'$200,000 or more': 9
+}
+
 SCALES = {
 	'swan_i': SWAN_SCALE,
 	'swan_hi': SWAN_SCALE,
@@ -196,7 +251,9 @@ SCALES = {
 	'neighborhood_crime': NEIGHBORHOOD_SCALE,
 	'neighborhood_noise': NEIGHBORHOOD_SCALE,
 	'neighborhood_clean': NEIGHBORHOOD_SCALE,
-	'education_level': EDUCATION_SCALE
+	'education_level': EDUCATION_SCALE,
+	'sex': SEX_SCALE,
+	'income': INCOME_SCALE
 }
 
 
@@ -211,21 +268,21 @@ def item_total_numeric(item_frame):
 	return item_frame.sum(axis=1).values
 
 
-def score_outcome(df, outcome, dichotomize=True):
+def score_outcome(df, group, outcome, dichotomize=True):
 
 	if outcome == 'stress':
 
 		s = score_outcome(
-			df, 'stress_pos', dichotomize=False) - score_outcome(
-			df, 'stress_neg', dichotomize=False)
+			df, group, 'stress_pos', dichotomize=False) - score_outcome(
+			df, group, 'stress_neg', dichotomize=False)
 
-	elif outcome in ['alcohol', 'physical_activity']:
+	elif outcome in ['alcohol', 'physical_activity', 'age']:
 
-		s = item_total_numeric(df[ITEMS[outcome]])
+		s = item_total_numeric(df[ITEMS[group][outcome]])
 
 	else:
 
-		s = item_total_categorical(df[ITEMS[outcome]], SCALES[outcome])
+		s = item_total_categorical(df[ITEMS[group][outcome]], SCALES[outcome])
 
 	if dichotomize:
 

@@ -17,7 +17,7 @@ for f in const.CHECKPOINT_FILE_PATHS:
 	if os.path.exists(f):
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
-NUM_TUNING_RUNS = 70
+NUM_TUNING_RUNS = 30
 
 
 def main():
@@ -28,9 +28,9 @@ def main():
 	hyperparam_options = {
 		'n_image_layers': [0],#[0, 1],
 		'image_feature_sizes': [0],#np.arange(10, 100),
-		'n_hidden_layers': [0, 1],
+		'n_hidden_layers': [0],#[0, 1],
 		'hidden_layer_sizes': np.arange(10, 300),
-		'learning_rate': np.logspace(-3.5, -6.5),
+		'learning_rate': np.logspace(-4., -6.5),
 		'activation_fn': [tf.nn.relu],#[tf.nn.sigmoid, tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .05, .1, .15, .2, .3, .5],
 		'agg_method': ['pool', 6, 7],#['concat', 'pool'],
@@ -46,7 +46,8 @@ def main():
 	resultcols += [('mse_or_auc_%s' % o) for o in const.OUTCOMES]
 	resultcols += list(hyperparam_options.keys())
 
-	tuning_target = 'mse_or_auc_smoking'
+	# tuning_target = 'mse_or_auc_smoking'
+	tuning_target = 'mse_or_auc_age'
 
 	rw = ResultsWriter(resultcols)
 	results_list = []
@@ -101,10 +102,10 @@ def main():
 
 				rw.write(i, {'status': 'failed', **hyperparams})
 
-			if len(fold_results) > 0:
+		if len(fold_results) > 0:
 
-				result = np.mean([x[tuning_target] for x in fold_results])
-				results_list.append((hyperparams, result))
+			result = np.mean([x[tuning_target] for x in fold_results])
+			results_list.append((hyperparams, result))
 
 	hps, results = list(zip(*results_list))
 	hyperparams = hps[np.argmax(results)]
@@ -359,6 +360,8 @@ class BaselineModel:
 
 
 	def _build_model(self):
+
+		### NOTE: mobilenet v2 says logits should be LINEAR from here
 
 		print('agg method type is', type(self.agg_method))
 
