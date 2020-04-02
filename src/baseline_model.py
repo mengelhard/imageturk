@@ -18,7 +18,7 @@ for f in const.CHECKPOINT_FILE_PATHS:
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
 NUM_TUNING_RUNS = 70
-NUM_ROWS_PER_DATAFILE = 80
+NUM_ROWS_PER_DATAFILE = None
 
 
 def main():
