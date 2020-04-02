@@ -18,6 +18,7 @@ for f in const.CHECKPOINT_FILE_PATHS:
 		CHECKPOINT_FILE = f + '/mobilenet_v2_1.0_224.ckpt'
 
 NUM_TUNING_RUNS = 70
+NUM_ROWS_PER_DATAFILE = 80
 
 
 def main():
@@ -33,24 +34,25 @@ def main():
 		'learning_rate': np.logspace(-4., -6.5),
 		'activation_fn': [tf.nn.relu, tf.nn.sigmoid],#[tf.nn.relu, tf.nn.tanh],
 		'dropout_pct': [0, .05, .1, .15, .2, .3, .5],
-		'agg_method': ['pool', 'pool', 'pool', 0, 2, 6],#['concat', 'pool'],
+		'agg_method': ['pool'],#['concat', 'pool'],
 		'train_mobilenet': [True, False],
 		'mobilenet_endpoint': ['global_pool'],#['global_pool', 'Logits'],
 		'max_epochs_no_improve': np.arange(3),
 		'batch_size': [10],
-		'dichotomize': [False]
+		'dichotomize': [None]
 	}
 
 	resultcols = ['status']
 	resultcols += ['fold']
-	resultcols += [('mse_or_auc_%s' % o) for o in const.OUTCOMES]
+	resultcols += [('mse_%s' % o) for o in const.OUTCOMES]
+	resultcols += [('r2_%s' % o) for o in const.OUTCOMES]
+	resultcols += [('auc_%s' % o) for o in const.OUTCOMES]
 	resultcols += list(hyperparam_options.keys())
-
-	# tuning_target = 'mse_or_auc_smoking'
-	tuning_target = 'mse_or_auc_age'
 
 	rw = ResultsWriter(resultcols)
 	results_list = []
+
+	# tuning runs
 
 	for i in range(NUM_TUNING_RUNS):
 
@@ -64,54 +66,61 @@ def main():
 			print('Training with val_fold =', val_fold)
 
 			tf.compat.v1.reset_default_graph()
-			dl = DataLoader(val_fold=val_fold)
+			dl = DataLoader(
+				val_fold=val_fold,
+				nrows=NUM_ROWS_PER_DATAFILE,
+				**hyperparams)
 			mdl = BaselineModel(dl, **hyperparams)
 
-			fold_results = []
+			fold_losses = []
 
-			try:
+			#try:
 
-				with tf.compat.v1.Session() as s:
+			with tf.compat.v1.Session() as s:
 
-					train_stats, val_stats = mdl.train(s, **hyperparams)
-					y_pred, y, loss_all = mdl.predict(s, 'val', hyperparams['batch_size'])
+				train_stats, val_stats = mdl.train(s, **hyperparams)
+				y_pred, y, avg_val_loss = mdl.predict(s, 'val', hyperparams['batch_size'])
 
-				if hyperparams['dichotomize']:
+			results_dict = get_results(y, y_pred, hyperparams['dichotomize'])
 
-					mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
+			fold_losses.append(avg_val_loss)
 
-				else:
+			rw.write(i, {
+				'status': 'complete',
+				'fold': val_fold,
+				**results_dict,
+				**hyperparams})
 
-					mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
+			rw.plot(
+				'%i_%i' % (i, val_fold),
+				train_stats,
+				val_stats,
+				y_pred,
+				y,
+				const.OUTCOMES,
+				results_dict,
+				const.VARTYPES,
+				**hyperparams)
 
-				mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
-					const.OUTCOMES, mse_or_auc)}
+			# except:
 
-				fold_results.append(mse_or_auc_dict)
+			# 	rw.write(i, {'status': 'failed', **hyperparams})
 
-				rw.write(i, {
-					'status': 'complete',
-					'fold': val_fold,
-					**mse_or_auc_dict,
-					**hyperparams})
-				rw.plot(
-					i, train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
-					**hyperparams)
+		if len(fold_losses) > 0:
+			results_list.append((hyperparams, np.mean(fold_losses)))
 
-			except:
-
-				rw.write(i, {'status': 'failed', **hyperparams})
-
-		if len(fold_results) > 0:
-
-			result = np.mean([x[tuning_target] for x in fold_results])
-			results_list.append((hyperparams, result))
+	# choose final hyperparameters
 
 	hps, results = list(zip(*results_list))
 	hyperparams = hps[np.argmax(results)]
 
+	# final run
+
 	tf.compat.v1.reset_default_graph()
-	dl = DataLoader(val_fold=3)
+	dl = DataLoader(
+		val_fold=3,
+		nrows=NUM_ROWS_PER_DATAFILE,
+		**hyperparams)
 	mdl = BaselineModel(dl, **hyperparams)
 
 	try:
@@ -119,31 +128,55 @@ def main():
 		with tf.compat.v1.Session() as s:
 
 			train_stats, val_stats = mdl.train(s, **hyperparams)
-			y_pred, y, loss_all = mdl.predict(s, 'test', hyperparams['batch_size'])
+			y_pred, y, avg_loss = mdl.predict(s, 'test', hyperparams['batch_size'])
 
-		if hyperparams['dichotomize']:
-
-			mse_or_auc = [roc_auc_score(yt, yp) for yt, yp in zip(y.T, y_pred.T)]
-
-		else:
-
-			mse_or_auc = np.mean((y - y_pred) ** 2, axis=0)
-
-		mse_or_auc_dict = {('mse_or_auc_%s' % o): v for o, v in zip(
-			const.OUTCOMES, mse_or_auc)}
+		results_dict = get_results(y, y_pred, hyperparams['dichotomize'])
 
 		rw.write('final', {
 			'status': 'complete',
 			'fold': 4,
-			**mse_or_auc_dict,
+			**results_dict,
 			**hyperparams})
+
 		rw.plot(
-			'final', train_stats, val_stats, y_pred, y, const.OUTCOMES, mse_or_auc,
+			'final',
+			train_stats,
+			val_stats,
+			y_pred,
+			y,
+			const.OUTCOMES,
+			results_dict,
+			const.VARTYPES,
 			**hyperparams)
 
 	except:
 
 		rw.write('final', {'status': 'failed', **hyperparams})
+
+
+def get_results(y_true, y_pred, dichotomize=None):
+
+	if dichotomize == True:
+		var_types = {o: 'categorical' for o in const.OUTCOMES}
+
+	elif dichotomize == False:
+		var_types = {o: 'numeric' for o in const.OUTCOMES}
+
+	else:
+		var_types = const.VARTYPES
+
+	result_dict = {}
+
+	for o, yt, yp in zip(const.OUTCOMES, y_true.T, y_pred.T):
+
+		if var_types[o] == 'categorical':
+			result_dict[('auc_%s' % o)] = roc_auc_score(yt, yp)
+
+		elif var_types[o] == 'numeric':
+			result_dict[('mse_%s' % o)] = np.mean((yp - yt) ** 2)
+			result_dict[('r2_%s' % o)] = np.corrcoef(yp, yt)[0][1] ** 2
+
+	return result_dict
 
 
 class BaselineModel:
@@ -187,9 +220,9 @@ class BaselineModel:
 
 	def train(
 		self, sess,
-		max_epochs=30, max_epochs_no_improve=2,
-		batch_size=20, batch_eval_freq=1,
-		verbose=True,
+		max_epochs=30,
+		max_epochs_no_improve=2,
+		batch_size=20,
 		**kwargs):
 
 		sess.run(tf.compat.v1.global_variables_initializer())
@@ -198,80 +231,62 @@ class BaselineModel:
 		batches_per_epoch = int(np.ceil(
 			self.dataloader.n_train / batch_size))
 
-		xval, yval = self.dataloader.sample_data(part='val', n=-1)
-
 		train_stats = []
 		val_stats = []
 
-		val_loss = []
+		# initial validation batch
 
-		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
-			'val', batch_size)):
+		val_batch_sizes, val_loss = self._run_batches(
+			sess,
+			[self.loss],
+			'val',
+			batch_size,
+			train=False)
 
-			print('Starting val batch %i' % batch_idx)
+		avg_val_loss = np.sum(val_batch_sizes * val_loss) / np.sum(val_batch_sizes)
+		val_stats.append((0, avg_val_loss))
 
-			loss_ = sess.run(
-				self.loss,
-				feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+		print('Initial val loss: %.2f' % val_stats[-1][1])
 
-			val_loss.append((len(xb), loss_))
+		# initialize early stopping conditions
 
-		val_loss = sum([l * v for l, v in val_loss]) / sum([l for l, v in val_loss])
-
-		val_stats.append((0, val_loss))
-
-		if verbose:
-
-			print('Initial val loss: %.2f' % val_stats[-1][1])
-
-		best_val_loss = val_stats[0][1]
+		best_val_loss = avg_val_loss
 		n_epochs_no_improve = 0
 
 		for epoch_idx in range(max_epochs):
 
-			for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
-				'train', batch_size)):
+			# training batches
 
-				print('Starting training batch %i' % batch_idx)
+			train_batch_sizes, train_loss = self._run_batches(
+				sess,
+				[self.loss],
+				'train',
+				batch_size,
+				train=True)
 
-				loss_, _ = sess.run(
-					[self.loss, self.train_step],
-					feed_dict={self.x: xb, self.y: yb, self.is_training: True})
+			train_indices = np.arange(len(train_loss)) + epoch_idx * batches_per_epoch
+			train_stats.extend(list(zip(train_indices, train_loss)))
 
-				if batch_idx % batch_eval_freq == 0:
-					idx = epoch_idx * batches_per_epoch + batch_idx
-					train_stats.append((idx, loss_))
+			# validation batches
 
-			idx = (epoch_idx + 1) * batches_per_epoch
+			val_batch_sizes, val_loss = self._run_batches(
+				sess,
+				[self.loss],
+				'val',
+				batch_size,
+				train=False)
 
-			val_loss = []
-
-			for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
-				'val', batch_size)):
-
-				print('Starting val batch %i' % batch_idx)
-
-				loss_ = sess.run(
-					self.loss,
-					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
-
-				val_loss.append((len(xb), loss_))
-
-			val_loss = sum([l * v for l, v in val_loss]) / sum([l for l, v in val_loss])
-
-			val_stats.append((idx, val_loss))
+			train_idx = (epoch_idx + 1) * batches_per_epoch
+			avg_val_loss = np.sum(val_batch_sizes * val_loss) / np.sum(val_batch_sizes)
+			val_stats.append((train_idx, avg_val_loss))
 
 			print('Completed Epoch %i' % epoch_idx)
+			print('Val loss: %.2f, Train loss: %.2f' % (avg_val_loss, np.mean(train_loss)))
 
-			if verbose:
+			# check for early stopping
 
-				print('Val loss: %.2f, Train loss: %.2f' % (
-					val_stats[-1][1],
-					np.mean(list(zip(*train_stats[-batches_per_epoch:]))[1])
-				))
-
-			if val_stats[-1][1] < best_val_loss:
-				best_val_loss = val_stats[-1][1]
+			if avg_val_loss < best_val_loss:
+				best_val_loss = avg_val_loss
 				n_epochs_no_improve = 0
 			else:
 				n_epochs_no_improve += 1
@@ -286,34 +301,59 @@ class BaselineModel:
 
 		assert part in ['all', 'train', 'val', 'test']
 
-		y_pred = []
-		y = []
-		loss = []
+		batch_sizes, y_pred, y_prob_pred, y, loss = self._run_batches(
+			sess,
+			[self.y_pred, self.y_prob_pred, self.y, self.loss],
+			part,
+			batch_size,
+			train=False)
+
+		avg_loss = (loss * batch_sizes) / np.sum(batch_sizes)
+
+		if self.dataloader.dichotomize == True:
+
+			return y_prob_pred, y, avg_loss
+
+		elif self.dataloader.dichotomize == False:
+
+			return y_pred, y, avg_loss
+
+		else:
+
+			cat_cols = self.dataloader.is_categorical
+			y_pred[:, cat_cols] = y_prob_pred[:, cat_cols]
+
+			return y_pred, y, avg_loss
+
+
+	def _run_batches(self, sess, tensors, part, batch_size, train=False):
+
+		results = [[] for t in tensors]
+		batch_sizes = []
 
 		for batch_idx, (xb, yb) in enumerate(self.dataloader.get_batch(
 			part, batch_size)):
 
-			if self.dataloader.dichotomize:
+			print('Starting %s batch %i' % (part, batch_idx))
 
-				y_pred_, loss_ = sess.run(
-					[self.y_prob_pred, self.loss],
-					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
+			if train:
+
+				results_ = sess.run(
+					tensors + [self.train_step],
+					feed_dict={self.x: xb, self.y: yb, self.is_training: True})
 
 			else:
 
-				y_pred_, loss_ = sess.run(
-					[self.y_pred, self.loss],
+				results_ = sess.run(
+					tensors,
 					feed_dict={self.x: xb, self.y: yb, self.is_training: False})
 
-			y_pred.append(y_pred_)
-			y.append(yb)
-			loss.append((len(xb), loss_))
+			batch_sizes.append(len(xb))
 
-		loss = sum([l * v for l, v in loss]) / sum([l for l, v in loss])
-		y_pred = np.concatenate(y_pred, axis=0)
-		y = np.concatenate(y, axis=0)
+			for i in range(len(tensors)):
+				results[i].append(results_[i])
 
-		return y_pred, y, loss
+		return (np.array(batch_sizes), ) + tuple(try_concat(r, axis=0) for r in results)
 
 
 	def _build_placeholders(self):
@@ -426,25 +466,40 @@ class BaselineModel:
 					activation_fn=None,
 					training=self.is_training)
 
-			if self.dataloader.dichotomize:
-
-				self.y_prob_pred = tf.nn.sigmoid(self.y_pred)
+			self.y_prob_pred = tf.nn.sigmoid(self.y_pred)
 
 
 	def _build_train_step(self):
 
-		if self.dataloader.dichotomize:
+		if self.dataloader.dichotomize == True:
 
-			self.loss = tf.reduce_mean(
-				tf.nn.sigmoid_cross_entropy_with_logits(
-					labels=self.y,
-					logits=self.y_pred))
+			self.loss = tf.compat.v1.losses.sigmoid_cross_entropy(
+				multi_class_labels=self.y,
+				logits=self.y_pred)
 
-		else:
+		elif self.dataloader.dichotomize == False:
 
 			self.loss = tf.compat.v1.losses.mean_squared_error(
 				self.y,
 				self.y_pred)
+
+		else:
+
+			self.loss_mse = tf.compat.v1.losses.mean_squared_error(
+				self.y,
+				self.y_pred,
+				reduction='none')
+
+			self.loss_ce = tf.compat.v1.losses.sigmoid_cross_entropy(
+				multi_class_labels=self.y,
+				logits=self.y_pred,
+				reduction='none')
+
+			mse_mask = (~self.dataloader.is_categorical).astype(float)[np.newaxis, :]
+			ce_mask = (self.dataloader.is_categorical).astype(float)[np.newaxis, :]
+
+			self.loss = tf.reduce_mean(
+				mse_mask * self.loss_mse + ce_mask * self.loss_ce)
 
 		if self.train_mobilenet:
 
@@ -495,6 +550,17 @@ def mlp(x, hidden_layer_sizes,
 def select_hyperparams(hpdict):
 
 	return {k: v[np.random.randint(len(v))] for k, v in hpdict.items()}
+
+
+def try_concat(arr, axis=0):
+
+	try:
+
+		return np.concatenate(arr, axis=axis)
+
+	except:
+
+		return np.array(arr)
 
 
 if __name__ == '__main__':

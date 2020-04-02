@@ -74,7 +74,7 @@ def main():
 
 	import matplotlib.pyplot as plt
 
-	x, y = dl.sample_data(normalize=False)
+	x, y = dl.sample_data(normalize_images=False)
 
 	x = np.squeeze(x, axis=0)
 	y = np.squeeze(y, axis=0)
@@ -100,16 +100,16 @@ class DataLoader:
 
 	def __init__(
 		self, n_folds=5, val_fold=3, test_fold=4,
-		dichotomize=False, **kwargs):
+		dichotomize=None, nrows=None, **kwargs):
 
 		self.datadir = os.path.join(
 			check_directories(const.DATA_DIRS),
 			'imageturk')
 
-		df_smok, smok_coldicts = self._get_datafile('smok')
+		df_smok, smok_coldicts = self._get_datafile('smok', nrows=nrows)
 		df_smok['smoke'] = 'Yes'
 
-		df_non, non_coldicts = self._get_datafile('non')
+		df_non, non_coldicts = self._get_datafile('non', nrows=nrows)
 		df_non['smoke'] = 'No'
 
 		assert const.ITEMS['smok'].keys() == const.ITEMS['non'].keys()
@@ -135,6 +135,8 @@ class DataLoader:
 				assert (v0 == v1) and (v1 == v2) and (v2 == v3), vstr
 
 		self.dichotomize = dichotomize
+		self.is_categorical = np.array(
+			[const.VARTYPES[o] == 'categorical' for o in const.OUTCOMES])
 
 		data_smok = self._get_image_filenames(df_smok).join(
 			self._get_outcomes(df_smok, 'smok', dichotomize=dichotomize))
@@ -159,11 +161,17 @@ class DataLoader:
 		self.data['train'] = self.data['all'][train_idx]
 		self.n_train = len(self.data['train'])
 
+		print('There are %i subjects in the training set' % self.n_train)
+
 		self.data['val'] = self.data['all'][val_idx]
 		self.n_val = len(self.data['val'])
 
+		print('There are %i subjects in the validation set' % self.n_val)
+
 		self.data['test'] = self.data['all'][test_idx]
 		self.n_test = len(self.data['test'])
+
+		print('There are %i subjects in the test set' % self.n_test)
 
 		self.train_mean = self.data['train'][const.OUTCOMES].mean(axis=0)
 		self.train_std = self.data['train'][const.OUTCOMES].std(axis=0)
@@ -195,16 +203,25 @@ class DataLoader:
 
 	def _normalize_outcomes(self, outcomes):
 
-		if self.dichotomize:
+		if self.dichotomize == True:
 
-			return outcomes.astype(float)
+			return outcomes
 
-		else:
+		elif self.dichotomize == False:
 
 			return (outcomes - self.train_mean[np.newaxis, :]) / self.train_std[np.newaxis, :]
 
+		else:
 
-	def sample_data(self, part='all', n=1, imgfmt='array', normalize=True):
+			normalized = (outcomes - self.train_mean[np.newaxis, :]) / self.train_std[np.newaxis, :]
+			normalized[:, self.is_categorical] = outcomes[:, self.is_categorical]
+
+			return normalized
+
+
+	def sample_data(
+		self, part='all', n=1, imgfmt='array',
+		normalize_outcomes=True, normalize_images=True):
 
 		assert part in ['all', 'train', 'val', 'test']
 		assert imgfmt in ['name', 'array']
@@ -219,7 +236,7 @@ class DataLoader:
 
 		x, y = self._split_images_and_outcomes(s)
 
-		if normalize:
+		if normalize_outcomes:
 
 			y = self._normalize_outcomes(y)
 
@@ -229,7 +246,7 @@ class DataLoader:
 
 		elif imgfmt == 'array':
 
-			return images_from_files(x, (224, 224), normalize=normalize), y
+			return images_from_files(x, (224, 224), normalize=normalize_images), y
 
 
 	def _split_images_and_outcomes(self, df):
@@ -240,7 +257,7 @@ class DataLoader:
 		return filenames, outcomes
 
 
-	def _get_datafile(self, group):
+	def _get_datafile(self, group, nrows=None):
 
 		subdirs = const.DATA_SUBDIRS[group]
 
@@ -257,7 +274,7 @@ class DataLoader:
 			print('Reading', fns[-1])
 
 			df, coldict, reversedict = self._read_imageturk_csv(
-				os.path.join(d, fns[-1]))
+				os.path.join(d, fns[-1]), nrows)
 
 			df = self._filter_imageturk_csv(df, reversedict)
 
@@ -269,9 +286,9 @@ class DataLoader:
 		return pd.concat(frames, axis=0, sort=True), coldicts
 
 
-	def _read_imageturk_csv(self, fn):
+	def _read_imageturk_csv(self, fn, nrows=None):
 
-		df = pd.read_csv(fn, header=[0, 1, 2])
+		df = pd.read_csv(fn, header=[0, 1, 2], nrows=nrows)
 		
 		colnames = [ast.literal_eval(x[2])['ImportId'] for x in df.columns.values]
 
@@ -308,7 +325,7 @@ class DataLoader:
 		return fdf
 
 
-	def _get_outcomes(self, df, group, dichotomize=True):
+	def _get_outcomes(self, df, group, dichotomize=None):
 		return pd.DataFrame(
 			{o: const.score_outcome(
 				df, group, o, dichotomize=dichotomize) for o in const.OUTCOMES},

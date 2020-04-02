@@ -57,8 +57,14 @@ class ResultsWriter:
 
 
 	def plot(
-		self, result_idx, train_stats, val_stats, y_pred, y, outcomes, score,
-		dichotomize=True, **kwargs):
+		self, result_idx, train_stats, val_stats, y_pred, y, outcomes, results_dict,
+		var_types, dichotomize=None, **kwargs):
+
+		if dichotomize == True:
+			var_types = {o: 'categorical' for o in outcomes}
+
+		elif dichotomize == False:
+			var_types = {o: 'numeric' for o in outcomes}
 
 		fig, ax = plt.subplots(
 			nrows=len(outcomes) + 1, ncols=1,
@@ -68,23 +74,28 @@ class ResultsWriter:
 		ax[0].plot(*list(zip(*val_stats)), label='val')
 		ax[0].set_title('Training Plot')
 		ax[0].set_xlabel('Iteration')
-		ax[0].set_ylabel('Mean Square Error')
+		ax[0].set_ylabel('Loss')
 		ax[0].legend()
 
-		for i in range(len(outcomes)):
+		for i, o in enumerate(outcomes):
 
-			if dichotomize:
+			if var_types[o] == 'categorical':
+
+				auc = results_dict[('auc_%s' % o)]
 
 				fpr, tpr, _ = roc_curve(y[:, i], y_pred[:, i])
 				ax[i + 1].plot(fpr, tpr)
-				ax[i + 1].set_title(outcomes[i] + '(AUC = %.2f)' % score[i])
+				ax[i + 1].set_title(outcomes[i] + ('(AUC=%.2f)' % auc))
 				ax[i + 1].set_xlabel('False Positive Rate')
 				ax[i + 1].set_ylabel('True Positive Rate')
 
 			else:
 
+				mse = results_dict[('mse_%s' % o)]
+				r2 = results_dict[('r2_%s' % o)]
+
 				ax[i + 1].scatter(y[:, i], y_pred[:, i])
-				ax[i + 1].set_title(outcomes[i] + '(MSE = %.2f)' % score[i])
+				ax[i + 1].set_title(outcomes[i] + ('(MSE=%.2f)' % mse) + ('(R2=%.2f)' % r2))
 				ax[i + 1].set_xlabel('y_true')
 				ax[i + 1].set_ylabel('y_pred')
 

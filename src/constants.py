@@ -32,31 +32,52 @@ IMAGES = [
 	'QID92', 'QID7', 'QID93', 'QID10', 'QID96'
 ]
 
-# OUTCOMES = [
-# 	'swan_i',
-# 	'swan_hi',
-# 	'phq',
-# 	'stress',
-# 	'sleep_reg',
-# 	'sleep_dist',
-# 	'eveningness',
-# 	'food_healthiness',
-# 	'food_insecurity',
-# 	'smoking',
-# 	'alcohol',
-# 	'neighborhood_crime',
-# 	'neighborhood_noise',
-# 	'neighborhood_clean',
-# 	'physical_activity',
-# 	'education_level',
-# 	'age',
-# 	'sex',
-# 	'income'
-# ]
+OUTCOMES = [
+	'swan_i',
+	'swan_hi',
+	'phq',
+	'stress',
+	'sleep_reg',
+	'sleep_dist',
+	'eveningness',
+	'food_healthiness',
+	'food_insecurity',
+	'smoking',
+	'alcohol',
+	'neighborhood_crime',
+	'neighborhood_noise',
+	'neighborhood_clean',
+	'physical_activity',
+	'education_level',
+	'age',
+	'sex',
+	'income'
+]
 
 # OUTCOMES = ['smoking']
+# OUTCOMES = ['age', 'sex', 'income']
 
-OUTCOMES = ['age', 'sex', 'income']
+VARTYPES = {
+	'swan_i': 'numeric',
+	'swan_hi': 'numeric',
+	'phq': 'numeric',
+	'stress': 'numeric',
+	'sleep_reg': 'numeric',
+	'sleep_dist': 'numeric',
+	'eveningness': 'numeric',
+	'food_healthiness': 'numeric',
+	'food_insecurity': 'numeric',
+	'smoking': 'categorical',
+	'alcohol': 'categorical',
+	'neighborhood_crime': 'numeric',
+	'neighborhood_noise': 'numeric',
+	'neighborhood_clean': 'numeric',
+	'physical_activity': 'numeric',
+	'education_level': 'numeric',
+	'age': 'numeric',
+	'sex': 'categorical',
+	'income': 'numeric'
+}
 
 CUTOFFS = {# DIVIDE BY >CUTOFF
 	'swan_i': 0,
@@ -268,7 +289,7 @@ def item_total_numeric(item_frame):
 	return item_frame.sum(axis=1).values
 
 
-def score_outcome(df, group, outcome, dichotomize=True):
+def score_outcome(df, group, outcome, dichotomize=None):
 
 	if outcome == 'stress':
 
@@ -284,11 +305,22 @@ def score_outcome(df, group, outcome, dichotomize=True):
 
 		s = item_total_categorical(df[ITEMS[group][outcome]], SCALES[outcome])
 
-	if dichotomize:
+	if dichotomize == True:
 
-		return s > CUTOFFS[outcome]
+		return (s > CUTOFFS[outcome]).astype(float)
 
-	else:
+	elif dichotomize == False:
 
 		return s
 
+	elif VARTYPES[outcome] == 'categorical':
+
+		return (s > CUTOFFS[outcome]).astype(float)
+
+	elif VARTYPES[outcome] == 'numeric':
+
+		return s
+
+	else:
+
+		assert False, 'Could not determine variable type for %s' % outcome
