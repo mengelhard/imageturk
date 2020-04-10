@@ -8,11 +8,12 @@ import constants as const
 
 VERIFY_BATCHES = False
 PLOT_OUTCOMES = True
+SINGLE_IMAGE = True
 
 
 def main():
 
-	dl = DataLoader()
+	dl = DataLoader(single_image=SINGLE_IMAGE)
 
 	print('Total participants:', len(dl.data['all']))
 
@@ -76,31 +77,39 @@ def main():
 
 	x, y = dl.sample_data(normalize_images=False)
 
-	x = np.squeeze(x, axis=0)
 	y = np.squeeze(y, axis=0)
 
 	print('Outcomes for displayed images:')
 	print(list(zip(const.OUTCOMES, y)))
 
-	fig, ax = plt.subplots(
-		ncols=5,
-		nrows=int(np.ceil(len(x) / 5)),
-		figsize=(15, 6))
+	if SINGLE_IMAGE:
+		plt.imshow(np.squeeze(x).astype(int))
+		plt.axis('off')
+		plt.tight_layout()
+		plt.show()
 
-	for i, img in enumerate(x):
-		a = ax[i // 5, i % 5]
-		a.imshow(x[i, :, :, :].astype(int))
-		a.axis('off')
+	else:
 
-	plt.tight_layout()
-	plt.show()
+		fig, ax = plt.subplots(
+			ncols=5,
+			nrows=int(np.ceil(len(x) / 5)),
+			figsize=(15, 6))
+
+		for i, img in enumerate(x):
+			a = ax[i // 5, i % 5]
+			a.imshow(x[i, :, :, :].astype(int))
+			a.axis('off')
+
+		plt.tight_layout()
+		plt.show()
 
 
 class DataLoader:
 
 	def __init__(
 		self, n_folds=5, val_fold=3, test_fold=4,
-		dichotomize=None, nrows=None, **kwargs):
+		dichotomize=None, nrows=None, single_image=False,
+		**kwargs):
 
 		self.datadir = os.path.join(
 			check_directories(const.DATA_DIRS),
@@ -152,6 +161,15 @@ class DataLoader:
 		self.data['all'] = pd.concat([data_smok, data_non], axis=0).sample(
 			frac=1, random_state=0) # shuffle rows
 
+		if single_image:
+			frames = []
+			for img in const.IMAGES:
+				frame = self.data['all'][[img] + const.OUTCOMES]
+				frame.columns = ['image'] + const.OUTCOMES
+				frames.append(frame)
+			self.data['all'] = pd.concat(frames, axis=0).sample(
+				frac=1, random_state=0)
+
 		fold_idx = get_fold_indices(n_folds, len(self.data['all']))
 
 		val_idx = fold_idx[val_fold]
@@ -198,7 +216,7 @@ class DataLoader:
 
 			elif imgfmt == 'array':
 
-				yield images_from_files(fns, (224, 224)), self._normalize_outcomes(y)
+				yield np.squeeze(images_from_files(fns, (224, 224))), self._normalize_outcomes(y)
 
 
 	def _normalize_outcomes(self, outcomes):
@@ -246,7 +264,7 @@ class DataLoader:
 
 		elif imgfmt == 'array':
 
-			return images_from_files(x, (224, 224), normalize=normalize_images), y
+			return np.squeeze(images_from_files(x, (224, 224), normalize=normalize_images)), y
 
 
 	def _split_images_and_outcomes(self, df):

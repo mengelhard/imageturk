@@ -56,6 +56,7 @@ OUTCOMES = [
 
 # OUTCOMES = ['smoking']
 # OUTCOMES = ['age', 'sex', 'income']
+OUTCOMES = ['income']
 
 VARTYPES = {
 	'swan_i': 'numeric',
